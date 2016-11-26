@@ -239,7 +239,10 @@ walk directions person =
                 vec3 (V3.getX person.gaze) 0 (V3.getZ person.gaze)
 
             theta =
-                PTree.angleBetween flatGaze V3.i
+                if (V3.dot flatGaze V3.k) > 0 then
+                    PTree.angleBetween flatGaze V3.i
+                else
+                    -(PTree.angleBetween flatGaze V3.i)
 
             dWorld =
                 M4.transform (M4.makeRotate -theta V3.j) dKey
@@ -367,6 +370,7 @@ message : String
 message =
     "Walk around with a first person perspective.\n"
         ++ "Arrows keys to move, space bar to jump, Z to crouch.\n"
+        ++ "Click and drag mouse to look."
 
 
 

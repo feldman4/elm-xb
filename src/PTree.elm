@@ -51,11 +51,14 @@ worldForest treeBases perspective =
         blendFunc =
             BlendFunc ( SrcAlpha, DstAlpha )
 
+        depthFunc =
+            DepthFunc Always
+
         blendEquation =
             BlendEquation Add
 
         functionCalls =
-            [ Enable Blend, blendFunc, blendEquation ]
+            [ Enable Blend, Enable DepthTest, depthFunc, blendFunc, blendEquation ]
     in
         [ renderWithConfig functionCalls treeVertexShader treeFragmentShader drawableForest uniforms ]
 
@@ -263,10 +266,10 @@ exampleForest : List (TreeBase Quad)
 exampleForest =
     let
         numTrees =
-            30
+            20
 
         seed0 =
-            Random.initialSeed 22783284
+            Random.initialSeed 22783283
 
         ( treeOffsets, seed1 ) =
             Random.map3 vec3 (Random.float -10 10) (Random.float -2 4) (Random.float -10 10)
@@ -274,7 +277,7 @@ exampleForest =
                 |> flip Random.step seed0
 
         smallFloat =
-            Random.float -0.5 0.5
+            Random.float -0.8 0.8
 
         tuple4 a b c d =
             ( a, b, c, d )
@@ -339,17 +342,22 @@ treeMat baseQuad treeOrigin =
 
         rightAngle =
             angleBetween (sub treeOrigin b) (sub d c)
+
+        zOffset =
+            vec3 0 0 0.01
     in
         ( M4.identity
             |> translate a
             |> M4.scale3 leftScale leftScale leftScale
             |> rotate (-1 * leftAngle) k
             |> translate (V3.negate d)
+            |> translate zOffset
         , M4.identity
             |> translate b
             |> M4.scale3 rightScale rightScale rightScale
             |> rotate (rightAngle) k
             |> translate (V3.negate c)
+            |> translate zOffset
         )
 
 
