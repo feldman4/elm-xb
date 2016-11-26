@@ -1,10 +1,9 @@
--- Try adding the ability to crouch or to land on top of the crate.
+-- adapted from elm-community/webgl crate example
 
 
 module Main exposing (..)
 
 import Keyboard
-import Math.Vector2 exposing (Vec2)
 import Math.Vector3 exposing (..)
 import Math.Vector3 as V3
 import Math.Matrix4 exposing (..)
@@ -17,11 +16,20 @@ import Html
 import Html.Attributes exposing (width, height, style)
 import AnimationFrame
 import Window
-import PTree exposing (..)
+import PTree
 import Drag
 
 
 -- MODEL
+
+
+type alias Model =
+    { keys : Keys
+    , size : Window.Size
+    , person : Person
+    , dragModel : Drag.Model
+    , forest : List (PTree.TreeBase PTree.SpringyQuad)
+    }
 
 
 type alias Person =
@@ -42,19 +50,8 @@ type alias Keys =
     }
 
 
-type alias Model =
-    { texture : Maybe Texture
-    , keys : Keys
-    , size : Window.Size
-    , person : Person
-    , dragModel : Drag.Model
-    }
-
-
 type Action
-    = TextureError Error
-    | TextureLoaded Texture
-    | KeyChange (Keys -> Keys)
+    = KeyChange (Keys -> Keys)
     | Animate Time
     | Resize Window.Size
     | DragMsg Drag.Msg
@@ -66,6 +63,11 @@ eyeLevel =
     2
 
 
+gazeSpeed : Float
+gazeSpeed =
+    1 / 200
+
+
 defaultPerson : Person
 defaultPerson =
     { position = vec3 0 eyeLevel -10
@@ -75,15 +77,27 @@ defaultPerson =
     }
 
 
+
+-- INIT AND UPDATE
+
+
+init : ( Model, Cmd Action )
+init =
+    ( { person = defaultPerson
+      , keys = Keys False False False False False False
+      , size = Window.Size 0 0
+      , dragModel = Drag.initialModel
+      , forest = PTree.exampleSpringyForest
+      }
+    , Cmd.batch
+        [ Task.perform Resize Window.size
+        ]
+    )
+
+
 update : Action -> Model -> ( Model, Cmd Action )
 update action model =
     case action of
-        TextureError err ->
-            ( model, Cmd.none )
-
-        TextureLoaded texture ->
-            ( { model | texture = Just texture }, Cmd.none )
-
         KeyChange keyfunc ->
             ( { model | keys = keyfunc model.keys }, Cmd.none )
 
@@ -99,26 +113,16 @@ update action model =
 
         Drag ( x, y ) ->
             let
-                dx =
-                    toFloat x / -200
-
-                dy =
-                    toFloat y / -200
-
-                sideways =
-                    V3.cross model.person.gaze j |> V3.normalize
-
-                r =
-                    makeRotate dx j |> M4.rotate dy sideways
-
-                newGaze =
-                    transform r model.person.gaze
+                direction =
+                    { dx = toFloat x * -1 * gazeSpeed
+                    , dy = toFloat y * -1 * gazeSpeed
+                    }
 
                 person =
                     model.person
 
                 newPerson =
-                    { person | gaze = newGaze }
+                    { person | gaze = turn direction person.gaze }
             in
                 { model | person = newPerson } ! []
 
@@ -131,33 +135,11 @@ update action model =
                         |> crouch model.keys.z
                         |> gravity (dt / 500)
                         |> physics (dt / 500)
+                , forest =
+                    PTree.animateForest dt model.forest
               }
             , Cmd.none
             )
-
-
-init : ( Model, Cmd Action )
-init =
-    ( { texture = Nothing
-      , person = defaultPerson
-      , keys = Keys False False False False False False
-      , size = Window.Size 0 0
-      , dragModel = Drag.initialModel
-      }
-    , Cmd.batch
-        [ loadTexture "texture/woodCrate.jpg"
-            |> Task.attempt
-                (\result ->
-                    case result of
-                        Err err ->
-                            TextureError err
-
-                        Ok val ->
-                            TextureLoaded val
-                )
-        , Task.perform Resize Window.size
-        ]
-    )
 
 
 subscriptions : Model -> Sub Action
@@ -227,20 +209,43 @@ directions { left, right, up, down } =
         }
 
 
+
+{- uses y is up convention (V3.j) -}
+
+
+turn : { dx : Float, dy : Float } -> Vec3 -> Vec3
+turn { dx, dy } gaze =
+    let
+        sideways =
+            V3.cross gaze j |> V3.normalize
+
+        r =
+            makeRotate dx V3.j |> M4.rotate dy sideways
+    in
+        transform r gaze |> V3.normalize
+
+
 walk : { x : Int, y : Int } -> Person -> Person
 walk directions person =
     if getY person.position > eyeLevel then
         person
     else
         let
-            vx =
-                toFloat -directions.x
+            -- ridiculous axis alignment
+            dKey =
+                vec3 (toFloat directions.y) 0 (toFloat directions.x)
 
-            vz =
-                toFloat directions.y
+            flatGaze =
+                vec3 (V3.getX person.gaze) 0 (V3.getZ person.gaze)
+
+            theta =
+                PTree.angleBetween flatGaze V3.i
+
+            dWorld =
+                M4.transform (M4.makeRotate -theta V3.j) dKey
         in
             { person
-                | velocity = vec3 vx (getY person.velocity) vz
+                | velocity = vec3 (getX dWorld) (getY person.velocity) (getZ dWorld)
             }
 
 
@@ -298,20 +303,6 @@ crouch on person =
         { person | crouch = False }
 
 
-world : Maybe Texture -> Mat4 -> List Renderable
-world maybeTexture perspective =
-    case maybeTexture of
-        Nothing ->
-            []
-
-        Just tex ->
-            let
-                uniforms =
-                    { crate = tex, perspective = perspective }
-            in
-                [ render vertexShader fragmentShader crate uniforms ]
-
-
 
 -- VIEW
 
@@ -323,7 +314,7 @@ perspective ( w, h ) person =
 
 
 view : Model -> Html Action
-view { size, person, texture } =
+view { size, person, forest } =
     let
         newPosition =
             case person.crouch of
@@ -339,10 +330,11 @@ view { size, person, texture } =
         perspectiveMatrix =
             perspective ( size.width, size.height ) newPerson
 
-        -- entities =
-        --     (world texture perspectiveMatrix)
+        noSpringForest =
+            List.map PTree.despring forest
+
         entities =
-            worldTree exampleTreeBase exampleTreeOrigin perspectiveMatrix
+            PTree.worldForest noSpringForest perspectiveMatrix
     in
         div
             [ style
@@ -374,11 +366,11 @@ view { size, person, texture } =
 message : String
 message =
     "Walk around with a first person perspective.\n"
-        ++ "Arrows keys to move, space bar to jump.\n"
+        ++ "Arrows keys to move, space bar to jump, Z to crouch.\n"
 
 
 
--- Define the mesh for a crate
+-- mesh
 
 
 type alias Vertex =
@@ -389,20 +381,6 @@ type alias Vertex =
 
 type alias Face =
     List ( Vertex, Vertex, Vertex )
-
-
-crate : Drawable Vertex
-crate =
-    Triangle
-        (List.concatMap (\x -> rotateFace x crateFace)
-            [ ( 0, 0, 0 )
-            , ( 90, 0, 0 )
-            , ( 180, 0, 0 )
-            , ( 270, 0, 0 )
-            , ( 0, 90, 0 )
-            , ( 0, -90, 0 )
-            ]
-        )
 
 
 rotateFace : ( Float, Float, Float ) -> Face -> Face
@@ -424,68 +402,3 @@ rotateFace ( angleYZ, angleXZ, angleXY ) face =
             ( f a, f b, f c )
     in
         List.map (each (\v -> { v | position = transform t v.position })) face
-
-
-crateFace : Face
-crateFace =
-    let
-        topLeft =
-            Vertex (vec3 -1 1 1) (vec3 0 1 0)
-
-        topRight =
-            Vertex (vec3 1 1 1) (vec3 1 1 0)
-
-        bottomLeft =
-            Vertex (vec3 -1 -1 1) (vec3 0 0 0)
-
-        bottomRight =
-            Vertex (vec3 1 -1 1) (vec3 1 0 0)
-    in
-        [ ( topLeft, topRight, bottomLeft )
-        , ( bottomLeft, topRight, bottomRight )
-        ]
-
-
-
--- Shaders
--- vertexShader magically knows attributes (Vertex) must have one field for each
--- attribute in the GLSL shader code
--- variables
-
-
-vertexShader : Shader Vertex { u | perspective : Mat4 } { vcoord : Vec2, fPosition : Vec3 }
-vertexShader =
-    [glsl|
-
-attribute vec3 position;
-attribute vec3 coord;
-uniform mat4 perspective;
-varying vec2 vcoord;
-varying vec3 fPosition;
-
-void main () {
-  gl_Position = perspective * vec4(position, 1.0);
-  vcoord = coord.xy;
-  fPosition = gl_Position.xyz;
-}
-
-|]
-
-
-fragmentShader : Shader {} { u | crate : Texture } { vcoord : Vec2, fPosition : Vec3 }
-fragmentShader =
-    [glsl|
-
-precision mediump float;
-uniform sampler2D crate;
-varying vec2 vcoord;
-varying vec3 fPosition;
-
-void main () {
-  vec4 tex_Color = texture2D(crate, vcoord);
-  vec4 fog_Color = vec4(0.9, 0.9, 1.0, 1.);
-  float dist = min(length(fPosition) * 0.1, 1.0);
-  gl_FragColor = mix(tex_Color, fog_Color, dist);
-}
-
-|]
