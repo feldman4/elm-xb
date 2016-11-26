@@ -375,7 +375,7 @@ quadFace depth quad =
             vec3 0.8 0.1 0.1
 
         end =
-            vec3 0.9 0.8 0.8
+            vec3 0.9 0.6 0.6
 
         depth_ =
             toFloat (depth + 1)
