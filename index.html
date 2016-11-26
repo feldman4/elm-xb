@@ -11999,6 +11999,188 @@ var _elm_lang$keyboard$Keyboard$subMap = F2(
 			});
 	});
 _elm_lang$core$Native_Platform.effectManagers['Keyboard'] = {pkg: 'elm-lang/keyboard', init: _elm_lang$keyboard$Keyboard$init, onEffects: _elm_lang$keyboard$Keyboard$onEffects, onSelfMsg: _elm_lang$keyboard$Keyboard$onSelfMsg, tag: 'sub', subMap: _elm_lang$keyboard$Keyboard$subMap};
+var _elm_lang$mouse$Mouse_ops = _elm_lang$mouse$Mouse_ops || {};
+_elm_lang$mouse$Mouse_ops['&>'] = F2(
+	function (t1, t2) {
+		return A2(
+			_elm_lang$core$Task$andThen,
+			function (_p0) {
+				return t2;
+			},
+			t1);
+	});
+var _elm_lang$mouse$Mouse$onSelfMsg = F3(
+	function (router, _p1, state) {
+		var _p2 = _p1;
+		var _p3 = A2(_elm_lang$core$Dict$get, _p2.category, state);
+		if (_p3.ctor === 'Nothing') {
+			return _elm_lang$core$Task$succeed(state);
+		} else {
+			var send = function (tagger) {
+				return A2(
+					_elm_lang$core$Platform$sendToApp,
+					router,
+					tagger(_p2.position));
+			};
+			return A2(
+				_elm_lang$mouse$Mouse_ops['&>'],
+				_elm_lang$core$Task$sequence(
+					A2(_elm_lang$core$List$map, send, _p3._0.taggers)),
+				_elm_lang$core$Task$succeed(state));
+		}
+	});
+var _elm_lang$mouse$Mouse$init = _elm_lang$core$Task$succeed(_elm_lang$core$Dict$empty);
+var _elm_lang$mouse$Mouse$categorizeHelpHelp = F2(
+	function (value, maybeValues) {
+		var _p4 = maybeValues;
+		if (_p4.ctor === 'Nothing') {
+			return _elm_lang$core$Maybe$Just(
+				{
+					ctor: '::',
+					_0: value,
+					_1: {ctor: '[]'}
+				});
+		} else {
+			return _elm_lang$core$Maybe$Just(
+				{ctor: '::', _0: value, _1: _p4._0});
+		}
+	});
+var _elm_lang$mouse$Mouse$categorizeHelp = F2(
+	function (subs, subDict) {
+		categorizeHelp:
+		while (true) {
+			var _p5 = subs;
+			if (_p5.ctor === '[]') {
+				return subDict;
+			} else {
+				var _v4 = _p5._1,
+					_v5 = A3(
+					_elm_lang$core$Dict$update,
+					_p5._0._0,
+					_elm_lang$mouse$Mouse$categorizeHelpHelp(_p5._0._1),
+					subDict);
+				subs = _v4;
+				subDict = _v5;
+				continue categorizeHelp;
+			}
+		}
+	});
+var _elm_lang$mouse$Mouse$categorize = function (subs) {
+	return A2(_elm_lang$mouse$Mouse$categorizeHelp, subs, _elm_lang$core$Dict$empty);
+};
+var _elm_lang$mouse$Mouse$subscription = _elm_lang$core$Native_Platform.leaf('Mouse');
+var _elm_lang$mouse$Mouse$Position = F2(
+	function (a, b) {
+		return {x: a, y: b};
+	});
+var _elm_lang$mouse$Mouse$position = A3(
+	_elm_lang$core$Json_Decode$map2,
+	_elm_lang$mouse$Mouse$Position,
+	A2(_elm_lang$core$Json_Decode$field, 'pageX', _elm_lang$core$Json_Decode$int),
+	A2(_elm_lang$core$Json_Decode$field, 'pageY', _elm_lang$core$Json_Decode$int));
+var _elm_lang$mouse$Mouse$Watcher = F2(
+	function (a, b) {
+		return {taggers: a, pid: b};
+	});
+var _elm_lang$mouse$Mouse$Msg = F2(
+	function (a, b) {
+		return {category: a, position: b};
+	});
+var _elm_lang$mouse$Mouse$onEffects = F3(
+	function (router, newSubs, oldState) {
+		var rightStep = F3(
+			function (category, taggers, task) {
+				var tracker = A3(
+					_elm_lang$dom$Dom_LowLevel$onDocument,
+					category,
+					_elm_lang$mouse$Mouse$position,
+					function (_p6) {
+						return A2(
+							_elm_lang$core$Platform$sendToSelf,
+							router,
+							A2(_elm_lang$mouse$Mouse$Msg, category, _p6));
+					});
+				return A2(
+					_elm_lang$core$Task$andThen,
+					function (state) {
+						return A2(
+							_elm_lang$core$Task$andThen,
+							function (pid) {
+								return _elm_lang$core$Task$succeed(
+									A3(
+										_elm_lang$core$Dict$insert,
+										category,
+										A2(_elm_lang$mouse$Mouse$Watcher, taggers, pid),
+										state));
+							},
+							_elm_lang$core$Process$spawn(tracker));
+					},
+					task);
+			});
+		var bothStep = F4(
+			function (category, _p7, taggers, task) {
+				var _p8 = _p7;
+				return A2(
+					_elm_lang$core$Task$andThen,
+					function (state) {
+						return _elm_lang$core$Task$succeed(
+							A3(
+								_elm_lang$core$Dict$insert,
+								category,
+								A2(_elm_lang$mouse$Mouse$Watcher, taggers, _p8.pid),
+								state));
+					},
+					task);
+			});
+		var leftStep = F3(
+			function (category, _p9, task) {
+				var _p10 = _p9;
+				return A2(
+					_elm_lang$mouse$Mouse_ops['&>'],
+					_elm_lang$core$Process$kill(_p10.pid),
+					task);
+			});
+		return A6(
+			_elm_lang$core$Dict$merge,
+			leftStep,
+			bothStep,
+			rightStep,
+			oldState,
+			_elm_lang$mouse$Mouse$categorize(newSubs),
+			_elm_lang$core$Task$succeed(_elm_lang$core$Dict$empty));
+	});
+var _elm_lang$mouse$Mouse$MySub = F2(
+	function (a, b) {
+		return {ctor: 'MySub', _0: a, _1: b};
+	});
+var _elm_lang$mouse$Mouse$clicks = function (tagger) {
+	return _elm_lang$mouse$Mouse$subscription(
+		A2(_elm_lang$mouse$Mouse$MySub, 'click', tagger));
+};
+var _elm_lang$mouse$Mouse$moves = function (tagger) {
+	return _elm_lang$mouse$Mouse$subscription(
+		A2(_elm_lang$mouse$Mouse$MySub, 'mousemove', tagger));
+};
+var _elm_lang$mouse$Mouse$downs = function (tagger) {
+	return _elm_lang$mouse$Mouse$subscription(
+		A2(_elm_lang$mouse$Mouse$MySub, 'mousedown', tagger));
+};
+var _elm_lang$mouse$Mouse$ups = function (tagger) {
+	return _elm_lang$mouse$Mouse$subscription(
+		A2(_elm_lang$mouse$Mouse$MySub, 'mouseup', tagger));
+};
+var _elm_lang$mouse$Mouse$subMap = F2(
+	function (func, _p11) {
+		var _p12 = _p11;
+		return A2(
+			_elm_lang$mouse$Mouse$MySub,
+			_p12._0,
+			function (_p13) {
+				return func(
+					_p12._1(_p13));
+			});
+	});
+_elm_lang$core$Native_Platform.effectManagers['Mouse'] = {pkg: 'elm-lang/mouse', init: _elm_lang$mouse$Mouse$init, onEffects: _elm_lang$mouse$Mouse$onEffects, onSelfMsg: _elm_lang$mouse$Mouse$onSelfMsg, tag: 'sub', subMap: _elm_lang$mouse$Mouse$subMap};
 var _elm_lang$window$Native_Window = function()
 {
 
@@ -12119,321 +12301,387 @@ var _elm_lang$window$Window$subMap = F2(
 			});
 	});
 _elm_lang$core$Native_Platform.effectManagers['Window'] = {pkg: 'elm-lang/window', init: _elm_lang$window$Window$init, onEffects: _elm_lang$window$Window$onEffects, onSelfMsg: _elm_lang$window$Window$onSelfMsg, tag: 'sub', subMap: _elm_lang$window$Window$subMap};
-var _feldman4$elm_xb$Main$fragmentShader = {'src': '\n\nprecision mediump float;\nuniform sampler2D crate;\nvarying vec2 vcoord;\n\nvoid main () {\n  gl_FragColor = texture2D(crate, vcoord);\n}\n\n'};
-var _feldman4$elm_xb$Main$vertexShader = {'src': '\n\nattribute vec3 position;\nattribute vec3 coord;\nuniform mat4 perspective;\nvarying vec2 vcoord;\n\nvoid main () {\n  gl_Position = perspective * vec4(position, 1.0);\n  vcoord = coord.xy;\n}\n\n'};
-var _feldman4$elm_xb$Main$message = A2(_elm_lang$core$Basics_ops['++'], 'Walk around with a first person perspective.\n', 'Arrows keys to move, space bar to jump.');
-var _feldman4$elm_xb$Main$perspective = F2(
-	function (_p0, person) {
+var _feldman4$elm_xb$PTree$treeFragmentShader = {'src': '\n\nprecision mediump float;\nvarying vec3 vcoord;\n\nvoid main () {\n  gl_FragColor = vec4(vcoord, 1.);\n}\n\n'};
+var _feldman4$elm_xb$PTree$treeVertexShader = {'src': '\n\nattribute vec3 position;\nattribute vec3 coord;\nuniform mat4 perspective;\nvarying vec3 vcoord;\n\nvoid main () {\n  gl_Position = perspective * vec4(position, 1.0);\n  vcoord = coord;\n}\n\n'};
+var _feldman4$elm_xb$PTree$angleBetween = F2(
+	function (a, b) {
+		return _elm_lang$core$Basics$acos(
+			A2(
+				_elm_community$linear_algebra$Math_Vector3$dot,
+				_elm_community$linear_algebra$Math_Vector3$normalize(a),
+				_elm_community$linear_algebra$Math_Vector3$normalize(b)));
+	});
+var _feldman4$elm_xb$PTree$treeMat = F2(
+	function (baseQuad, treeOrigin) {
+		var _p0 = baseQuad;
+		var a = _p0._0;
+		var b = _p0._1;
+		var c = _p0._2;
+		var d = _p0._3;
+		var leftScale = _elm_community$linear_algebra$Math_Vector3$length(
+			A2(_elm_community$linear_algebra$Math_Vector3$sub, treeOrigin, a)) / _elm_community$linear_algebra$Math_Vector3$length(
+			A2(_elm_community$linear_algebra$Math_Vector3$sub, c, d));
+		var rightScale = _elm_community$linear_algebra$Math_Vector3$length(
+			A2(_elm_community$linear_algebra$Math_Vector3$sub, treeOrigin, b)) / _elm_community$linear_algebra$Math_Vector3$length(
+			A2(_elm_community$linear_algebra$Math_Vector3$sub, c, d));
+		var leftAngle = A2(
+			_feldman4$elm_xb$PTree$angleBetween,
+			A2(_elm_community$linear_algebra$Math_Vector3$sub, treeOrigin, a),
+			A2(_elm_community$linear_algebra$Math_Vector3$sub, c, d));
+		var rightAngle = A2(
+			_feldman4$elm_xb$PTree$angleBetween,
+			A2(_elm_community$linear_algebra$Math_Vector3$sub, treeOrigin, b),
+			A2(_elm_community$linear_algebra$Math_Vector3$sub, d, c));
+		return {
+			ctor: '_Tuple2',
+			_0: A2(
+				_elm_community$linear_algebra$Math_Matrix4$translate,
+				_elm_community$linear_algebra$Math_Vector3$negate(d),
+				A3(
+					_elm_community$linear_algebra$Math_Matrix4$rotate,
+					-1 * leftAngle,
+					_elm_community$linear_algebra$Math_Vector3$k,
+					A4(
+						_elm_community$linear_algebra$Math_Matrix4$scale3,
+						leftScale,
+						leftScale,
+						leftScale,
+						A2(_elm_community$linear_algebra$Math_Matrix4$translate, a, _elm_community$linear_algebra$Math_Matrix4$identity)))),
+			_1: A2(
+				_elm_community$linear_algebra$Math_Matrix4$translate,
+				_elm_community$linear_algebra$Math_Vector3$negate(c),
+				A3(
+					_elm_community$linear_algebra$Math_Matrix4$rotate,
+					rightAngle,
+					_elm_community$linear_algebra$Math_Vector3$k,
+					A4(
+						_elm_community$linear_algebra$Math_Matrix4$scale3,
+						rightScale,
+						rightScale,
+						rightScale,
+						A2(_elm_community$linear_algebra$Math_Matrix4$translate, b, _elm_community$linear_algebra$Math_Matrix4$identity))))
+		};
+	});
+var _feldman4$elm_xb$PTree$exampleTreeOrigin = A3(_elm_community$linear_algebra$Math_Vector3$vec3, 0, 2, 0);
+var _feldman4$elm_xb$PTree$exampleTreeBase = {
+	ctor: '_Tuple4',
+	_0: A3(_elm_community$linear_algebra$Math_Vector3$vec3, 0.1, 1.9, 0),
+	_1: A3(_elm_community$linear_algebra$Math_Vector3$vec3, -0.7, 0.7, 0),
+	_2: A3(_elm_community$linear_algebra$Math_Vector3$vec3, -1, -1, 0),
+	_3: A3(_elm_community$linear_algebra$Math_Vector3$vec3, 1.5, -1, 0)
+};
+var _feldman4$elm_xb$PTree$eachQuad = F2(
+	function (f, q) {
+		var _p1 = q;
+		var a = _p1._0;
+		var b = _p1._1;
+		var c = _p1._2;
+		var d = _p1._3;
+		return {
+			ctor: '_Tuple4',
+			_0: f(a),
+			_1: f(b),
+			_2: f(c),
+			_3: f(d)
+		};
+	});
+var _feldman4$elm_xb$PTree$branchTransform = F3(
+	function (fLeft, fRight, soFar) {
+		return {
+			ctor: '_Tuple2',
+			_0: function (_p2) {
+				return soFar(
+					fLeft(_p2));
+			},
+			_1: function (_p3) {
+				return soFar(
+					fRight(_p3));
+			}
+		};
+	});
+var _feldman4$elm_xb$PTree$recurseBranch = F3(
+	function (n, transformer, acc) {
+		if (_elm_lang$core$Native_Utils.eq(n, 0)) {
+			return acc;
+		} else {
+			var accNew = A2(_elm_lang$core$List$concatMap, transformer, acc);
+			return A2(
+				_elm_lang$core$Basics_ops['++'],
+				acc,
+				A3(_feldman4$elm_xb$PTree$recurseBranch, n - 1, transformer, accNew));
+		}
+	});
+var _feldman4$elm_xb$PTree$toList = function (_p4) {
+	var _p5 = _p4;
+	return {
+		ctor: '::',
+		_0: _p5._0,
+		_1: {
+			ctor: '::',
+			_0: _p5._1,
+			_1: {ctor: '[]'}
+		}
+	};
+};
+var _feldman4$elm_xb$PTree$buildTree = F3(
+	function (depth, quad, origin) {
+		var _p6 = A2(_feldman4$elm_xb$PTree$treeMat, quad, origin);
+		var tLeft = _p6._0;
+		var tRight = _p6._1;
+		var fLeft = _feldman4$elm_xb$PTree$eachQuad(
+			_elm_community$linear_algebra$Math_Matrix4$transform(tLeft));
+		var fRight = _feldman4$elm_xb$PTree$eachQuad(
+			_elm_community$linear_algebra$Math_Matrix4$transform(tRight));
+		var transformer = function (x) {
+			return _feldman4$elm_xb$PTree$toList(
+				A3(_feldman4$elm_xb$PTree$branchTransform, fLeft, fRight, x));
+		};
+		return A2(
+			_elm_lang$core$List$map,
+			function (x) {
+				return x(quad);
+			},
+			A3(
+				_feldman4$elm_xb$PTree$recurseBranch,
+				depth,
+				transformer,
+				{
+					ctor: '::',
+					_0: _elm_lang$core$Basics$identity,
+					_1: {ctor: '[]'}
+				}));
+	});
+var _feldman4$elm_xb$PTree$Vertex = F2(
+	function (a, b) {
+		return {position: a, coord: b};
+	});
+var _feldman4$elm_xb$PTree$quadFace = F2(
+	function (depth, quad) {
+		var depth_ = _elm_lang$core$Basics$toFloat(depth + 1);
+		var end = A3(_elm_community$linear_algebra$Math_Vector3$vec3, 0.9, 0.8, 0.8);
+		var start = A3(_elm_community$linear_algebra$Math_Vector3$vec3, 0.8, 0.1, 0.1);
+		var shade = A2(
+			_elm_community$linear_algebra$Math_Vector3$add,
+			A2(_elm_community$linear_algebra$Math_Vector3$scale, 1 / depth_, start),
+			A2(_elm_community$linear_algebra$Math_Vector3$scale, (depth_ - 1) / depth_, end));
+		var _p7 = quad;
+		var a = _p7._0;
+		var b = _p7._1;
+		var c = _p7._2;
+		var d = _p7._3;
+		var a_ = A2(_feldman4$elm_xb$PTree$Vertex, a, shade);
+		var b_ = A2(_feldman4$elm_xb$PTree$Vertex, b, shade);
+		var c_ = A2(_feldman4$elm_xb$PTree$Vertex, c, shade);
+		var d_ = A2(_feldman4$elm_xb$PTree$Vertex, d, shade);
+		return {
+			ctor: '::',
+			_0: {ctor: '_Tuple3', _0: a_, _1: b_, _2: c_},
+			_1: {
+				ctor: '::',
+				_0: {ctor: '_Tuple3', _0: a_, _1: c_, _2: d_},
+				_1: {ctor: '[]'}
+			}
+		};
+	});
+var _feldman4$elm_xb$PTree$worldTree = F3(
+	function (quad, origin, perspective) {
+		var uniforms = {perspective: perspective};
+		var depth = 5;
+		var quads = A3(_feldman4$elm_xb$PTree$buildTree, depth, quad, origin);
+		var drawableTree = _elm_community$webgl$WebGL$Triangle(
+			_elm_lang$core$List$concat(
+				A2(_elm_lang$core$List$indexedMap, _feldman4$elm_xb$PTree$quadFace, quads)));
+		return {
+			ctor: '::',
+			_0: A4(_elm_community$webgl$WebGL$render, _feldman4$elm_xb$PTree$treeVertexShader, _feldman4$elm_xb$PTree$treeFragmentShader, drawableTree, uniforms),
+			_1: {ctor: '[]'}
+		};
+	});
+var _hoelzro$elm_drag$Drag$dragCmd = F3(
+	function (constructor, _p1, _p0) {
+		var _p2 = _p1;
+		var _p3 = _p0;
+		var dy = _p3._1 - _p2._1;
+		var dx = _p3._0 - _p2._0;
+		var task = _elm_lang$core$Basics$always(
+			constructor(
+				{ctor: '_Tuple2', _0: dx, _1: dy}));
+		return A2(_elm_lang$core$Task$perform, task, _elm_lang$core$Time$now);
+	});
+var _hoelzro$elm_drag$Drag$update = F3(
+	function (constructor, msg, model) {
+		var _p4 = msg;
+		switch (_p4.ctor) {
+			case 'MouseUp':
+				return {
+					ctor: '_Tuple2',
+					_0: _elm_lang$core$Native_Utils.update(
+						model,
+						{isDown: false}),
+					_1: _elm_lang$core$Platform_Cmd$none
+				};
+			case 'MouseDown':
+				return {
+					ctor: '_Tuple2',
+					_0: {
+						isDown: true,
+						currPosition: {ctor: '_Tuple2', _0: _p4._0.x, _1: _p4._0.y}
+					},
+					_1: _elm_lang$core$Platform_Cmd$none
+				};
+			default:
+				var _p6 = _p4._0.y;
+				var _p5 = _p4._0.x;
+				var cmd = model.isDown ? A3(
+					_hoelzro$elm_drag$Drag$dragCmd,
+					constructor,
+					model.currPosition,
+					{ctor: '_Tuple2', _0: _p5, _1: _p6}) : _elm_lang$core$Platform_Cmd$none;
+				var newModel = _elm_lang$core$Native_Utils.update(
+					model,
+					{
+						currPosition: {ctor: '_Tuple2', _0: _p5, _1: _p6}
+					});
+				return {ctor: '_Tuple2', _0: newModel, _1: cmd};
+		}
+	});
+var _hoelzro$elm_drag$Drag$initialModel = {
+	isDown: false,
+	currPosition: {ctor: '_Tuple2', _0: 0, _1: 0}
+};
+var _hoelzro$elm_drag$Drag$Model = F2(
+	function (a, b) {
+		return {isDown: a, currPosition: b};
+	});
+var _hoelzro$elm_drag$Drag$MouseMove = function (a) {
+	return {ctor: 'MouseMove', _0: a};
+};
+var _hoelzro$elm_drag$Drag$MouseDown = function (a) {
+	return {ctor: 'MouseDown', _0: a};
+};
+var _hoelzro$elm_drag$Drag$MouseUp = function (a) {
+	return {ctor: 'MouseUp', _0: a};
+};
+var _hoelzro$elm_drag$Drag$subscriptions = F2(
+	function (constructor, model) {
+		var moves = _elm_lang$mouse$Mouse$moves(
+			function (_p7) {
+				return constructor(
+					_hoelzro$elm_drag$Drag$MouseMove(_p7));
+			});
+		var downs = _elm_lang$mouse$Mouse$downs(
+			function (_p8) {
+				return constructor(
+					_hoelzro$elm_drag$Drag$MouseDown(_p8));
+			});
+		var ups = _elm_lang$mouse$Mouse$ups(
+			function (_p9) {
+				return constructor(
+					_hoelzro$elm_drag$Drag$MouseUp(_p9));
+			});
+		var subs = model.isDown ? {
+			ctor: '::',
+			_0: ups,
+			_1: {
+				ctor: '::',
+				_0: downs,
+				_1: {
+					ctor: '::',
+					_0: moves,
+					_1: {ctor: '[]'}
+				}
+			}
+		} : {
+			ctor: '::',
+			_0: downs,
+			_1: {ctor: '[]'}
+		};
+		return _elm_lang$core$Platform_Sub$batch(subs);
+	});
+var _feldman4$elm_xb$Main$fragmentShader = {'src': '\n\nprecision mediump float;\nuniform sampler2D crate;\nvarying vec2 vcoord;\nvarying vec3 fPosition;\n\nvoid main () {\n  vec4 tex_Color = texture2D(crate, vcoord);\n  vec4 fog_Color = vec4(0.9, 0.9, 1.0, 1.);\n  float dist = min(length(fPosition) * 0.1, 1.0);\n  gl_FragColor = mix(tex_Color, fog_Color, dist);\n}\n\n'};
+var _feldman4$elm_xb$Main$vertexShader = {'src': '\n\nattribute vec3 position;\nattribute vec3 coord;\nuniform mat4 perspective;\nvarying vec2 vcoord;\nvarying vec3 fPosition;\n\nvoid main () {\n  gl_Position = perspective * vec4(position, 1.0);\n  vcoord = coord.xy;\n  fPosition = gl_Position.xyz;\n}\n\n'};
+var _feldman4$elm_xb$Main$rotateFace = F2(
+	function (_p0, face) {
 		var _p1 = _p0;
+		var each = F2(
+			function (f, _p2) {
+				var _p3 = _p2;
+				return {
+					ctor: '_Tuple3',
+					_0: f(_p3._0),
+					_1: f(_p3._1),
+					_2: f(_p3._2)
+				};
+			});
+		var kRot = A2(
+			_elm_community$linear_algebra$Math_Matrix4$makeRotate,
+			_elm_lang$core$Basics$degrees(_p1._2),
+			_elm_community$linear_algebra$Math_Vector3$k);
+		var jRot = A2(
+			_elm_community$linear_algebra$Math_Matrix4$makeRotate,
+			_elm_lang$core$Basics$degrees(_p1._1),
+			_elm_community$linear_algebra$Math_Vector3$j);
+		var iRot = A2(
+			_elm_community$linear_algebra$Math_Matrix4$makeRotate,
+			_elm_lang$core$Basics$degrees(_p1._0),
+			_elm_community$linear_algebra$Math_Vector3$i);
+		var t = A2(
+			_elm_community$linear_algebra$Math_Matrix4$mul,
+			A2(_elm_community$linear_algebra$Math_Matrix4$mul, iRot, jRot),
+			kRot);
+		return A2(
+			_elm_lang$core$List$map,
+			each(
+				function (v) {
+					return _elm_lang$core$Native_Utils.update(
+						v,
+						{
+							position: A2(_elm_community$linear_algebra$Math_Matrix4$transform, t, v.position)
+						});
+				}),
+			face);
+	});
+var _feldman4$elm_xb$Main$message = A2(_elm_lang$core$Basics_ops['++'], 'Walk around with a first person perspective.\n', 'Arrows keys to move, space bar to jump.\n');
+var _feldman4$elm_xb$Main$perspective = F2(
+	function (_p4, person) {
+		var _p5 = _p4;
 		return A2(
 			_elm_community$linear_algebra$Math_Matrix4$mul,
 			A4(
 				_elm_community$linear_algebra$Math_Matrix4$makePerspective,
-				45,
-				_elm_lang$core$Basics$toFloat(_p1._0) / _elm_lang$core$Basics$toFloat(_p1._1),
+				90,
+				_elm_lang$core$Basics$toFloat(_p5._0) / _elm_lang$core$Basics$toFloat(_p5._1),
 				1.0e-2,
 				100),
 			A3(
 				_elm_community$linear_algebra$Math_Matrix4$makeLookAt,
 				person.position,
-				A2(_elm_community$linear_algebra$Math_Vector3$add, person.position, _elm_community$linear_algebra$Math_Vector3$k),
+				A2(_elm_community$linear_algebra$Math_Vector3$add, person.position, person.gaze),
 				_elm_community$linear_algebra$Math_Vector3$j));
 	});
-var _feldman4$elm_xb$Main$directions = function (_p2) {
-	var _p3 = _p2;
-	var direction = F2(
-		function (a, b) {
-			var _p4 = {ctor: '_Tuple2', _0: a, _1: b};
-			_v2_2:
-			do {
-				if (_p4.ctor === '_Tuple2') {
-					if (_p4._0 === true) {
-						if (_p4._1 === false) {
-							return -1;
-						} else {
-							break _v2_2;
-						}
-					} else {
-						if (_p4._1 === true) {
-							return 1;
-						} else {
-							break _v2_2;
-						}
-					}
-				} else {
-					break _v2_2;
-				}
-			} while(false);
-			return 0;
-		});
-	return {
-		x: A2(direction, _p3.left, _p3.right),
-		y: A2(direction, _p3.down, _p3.up)
-	};
-};
-var _feldman4$elm_xb$Main$eyeLevel = 2;
-var _feldman4$elm_xb$Main$defaultPerson = {
-	position: A3(_elm_community$linear_algebra$Math_Vector3$vec3, 0, _feldman4$elm_xb$Main$eyeLevel, -10),
-	velocity: A3(_elm_community$linear_algebra$Math_Vector3$vec3, 0, 0, 0)
-};
-var _feldman4$elm_xb$Main$walk = F2(
-	function (directions, person) {
-		if (_elm_lang$core$Native_Utils.cmp(
-			_elm_community$linear_algebra$Math_Vector3$getY(person.position),
-			_feldman4$elm_xb$Main$eyeLevel) > 0) {
-			return person;
+var _feldman4$elm_xb$Main$view = function (_p6) {
+	var _p7 = _p6;
+	var _p10 = _p7.size;
+	var _p9 = _p7.person;
+	var newPosition = function () {
+		var _p8 = _p9.crouch;
+		if (_p8 === true) {
+			return A2(
+				_elm_community$linear_algebra$Math_Vector3$setY,
+				_elm_community$linear_algebra$Math_Vector3$getY(_p9.position) - 1,
+				_p9.position);
 		} else {
-			var vz = _elm_lang$core$Basics$toFloat(directions.y);
-			var vx = _elm_lang$core$Basics$toFloat(0 - directions.x);
-			return _elm_lang$core$Native_Utils.update(
-				person,
-				{
-					velocity: A3(
-						_elm_community$linear_algebra$Math_Vector3$vec3,
-						vx,
-						_elm_community$linear_algebra$Math_Vector3$getY(person.velocity),
-						vz)
-				});
+			return _p9.position;
 		}
-	});
-var _feldman4$elm_xb$Main$jump = F2(
-	function (isJumping, person) {
-		if ((!isJumping) || (_elm_lang$core$Native_Utils.cmp(
-			_elm_community$linear_algebra$Math_Vector3$getY(person.position),
-			_feldman4$elm_xb$Main$eyeLevel) > 0)) {
-			return person;
-		} else {
-			var _p5 = _elm_community$linear_algebra$Math_Vector3$toTuple(person.velocity);
-			var vx = _p5._0;
-			var vz = _p5._2;
-			return _elm_lang$core$Native_Utils.update(
-				person,
-				{
-					velocity: A3(_elm_community$linear_algebra$Math_Vector3$vec3, vx, 2, vz)
-				});
-		}
-	});
-var _feldman4$elm_xb$Main$physics = F2(
-	function (dt, person) {
-		var position = A2(
-			_elm_community$linear_algebra$Math_Vector3$add,
-			person.position,
-			A2(_elm_community$linear_algebra$Math_Vector3$scale, dt, person.velocity));
-		var _p6 = _elm_community$linear_algebra$Math_Vector3$toTuple(position);
-		var x = _p6._0;
-		var y = _p6._1;
-		var z = _p6._2;
-		return _elm_lang$core$Native_Utils.update(
-			person,
-			{
-				position: (_elm_lang$core$Native_Utils.cmp(y, _feldman4$elm_xb$Main$eyeLevel) < 0) ? A3(_elm_community$linear_algebra$Math_Vector3$vec3, x, _feldman4$elm_xb$Main$eyeLevel, z) : position
-			});
-	});
-var _feldman4$elm_xb$Main$gravity = F2(
-	function (dt, person) {
-		if (_elm_lang$core$Native_Utils.cmp(
-			_elm_community$linear_algebra$Math_Vector3$getY(person.position),
-			_feldman4$elm_xb$Main$eyeLevel) < 1) {
-			return person;
-		} else {
-			var v = _elm_community$linear_algebra$Math_Vector3$toRecord(person.velocity);
-			return _elm_lang$core$Native_Utils.update(
-				person,
-				{
-					velocity: A3(_elm_community$linear_algebra$Math_Vector3$vec3, v.x, v.y - (2 * dt), v.z)
-				});
-		}
-	});
-var _feldman4$elm_xb$Main$update = F2(
-	function (action, model) {
-		var _p7 = action;
-		switch (_p7.ctor) {
-			case 'TextureError':
-				return {ctor: '_Tuple2', _0: model, _1: _elm_lang$core$Platform_Cmd$none};
-			case 'TextureLoaded':
-				return {
-					ctor: '_Tuple2',
-					_0: _elm_lang$core$Native_Utils.update(
-						model,
-						{
-							texture: _elm_lang$core$Maybe$Just(_p7._0)
-						}),
-					_1: _elm_lang$core$Platform_Cmd$none
-				};
-			case 'KeyChange':
-				return {
-					ctor: '_Tuple2',
-					_0: _elm_lang$core$Native_Utils.update(
-						model,
-						{
-							keys: _p7._0(model.keys)
-						}),
-					_1: _elm_lang$core$Platform_Cmd$none
-				};
-			case 'Resize':
-				return {
-					ctor: '_Tuple2',
-					_0: _elm_lang$core$Native_Utils.update(
-						model,
-						{size: _p7._0}),
-					_1: _elm_lang$core$Platform_Cmd$none
-				};
-			default:
-				var _p8 = _p7._0;
-				return {
-					ctor: '_Tuple2',
-					_0: _elm_lang$core$Native_Utils.update(
-						model,
-						{
-							person: A2(
-								_feldman4$elm_xb$Main$physics,
-								_p8 / 500,
-								A2(
-									_feldman4$elm_xb$Main$gravity,
-									_p8 / 500,
-									A2(
-										_feldman4$elm_xb$Main$jump,
-										model.keys.space,
-										A2(
-											_feldman4$elm_xb$Main$walk,
-											_feldman4$elm_xb$Main$directions(model.keys),
-											model.person))))
-						}),
-					_1: _elm_lang$core$Platform_Cmd$none
-				};
-		}
-	});
-var _feldman4$elm_xb$Main$Person = F2(
-	function (a, b) {
-		return {position: a, velocity: b};
-	});
-var _feldman4$elm_xb$Main$Keys = F6(
-	function (a, b, c, d, e, f) {
-		return {left: a, right: b, up: c, down: d, space: e, shift: f};
-	});
-var _feldman4$elm_xb$Main$Model = F4(
-	function (a, b, c, d) {
-		return {texture: a, keys: b, size: c, person: d};
-	});
-var _feldman4$elm_xb$Main$Vertex = F2(
-	function (a, b) {
-		return {position: a, coord: b};
-	});
-var _feldman4$elm_xb$Main$face = function () {
-	var bottomRight = A2(
-		_feldman4$elm_xb$Main$Vertex,
-		A3(_elm_community$linear_algebra$Math_Vector3$vec3, 1, -1, 1),
-		A3(_elm_community$linear_algebra$Math_Vector3$vec3, 1, 0, 0));
-	var bottomLeft = A2(
-		_feldman4$elm_xb$Main$Vertex,
-		A3(_elm_community$linear_algebra$Math_Vector3$vec3, -1, -1, 1),
-		A3(_elm_community$linear_algebra$Math_Vector3$vec3, 0, 0, 0));
-	var topRight = A2(
-		_feldman4$elm_xb$Main$Vertex,
-		A3(_elm_community$linear_algebra$Math_Vector3$vec3, 1, 1, 1),
-		A3(_elm_community$linear_algebra$Math_Vector3$vec3, 1, 1, 0));
-	var topLeft = A2(
-		_feldman4$elm_xb$Main$Vertex,
-		A3(_elm_community$linear_algebra$Math_Vector3$vec3, -1, 1, 1),
-		A3(_elm_community$linear_algebra$Math_Vector3$vec3, 0, 1, 0));
-	return {
-		ctor: '::',
-		_0: {ctor: '_Tuple3', _0: topLeft, _1: topRight, _2: bottomLeft},
-		_1: {
-			ctor: '::',
-			_0: {ctor: '_Tuple3', _0: bottomLeft, _1: topRight, _2: bottomRight},
-			_1: {ctor: '[]'}
-		}
-	};
-}();
-var _feldman4$elm_xb$Main$rotatedFace = function (_p9) {
-	var _p10 = _p9;
-	var each = F2(
-		function (f, _p11) {
-			var _p12 = _p11;
-			return {
-				ctor: '_Tuple3',
-				_0: f(_p12._0),
-				_1: f(_p12._1),
-				_2: f(_p12._2)
-			};
-		});
-	var y = A2(
-		_elm_community$linear_algebra$Math_Matrix4$makeRotate,
-		_elm_lang$core$Basics$degrees(_p10._1),
-		_elm_community$linear_algebra$Math_Vector3$i);
-	var x = A2(
-		_elm_community$linear_algebra$Math_Matrix4$makeRotate,
-		_elm_lang$core$Basics$degrees(_p10._0),
-		_elm_community$linear_algebra$Math_Vector3$j);
-	var t = A2(_elm_community$linear_algebra$Math_Matrix4$mul, x, y);
-	return A2(
-		_elm_lang$core$List$map,
-		each(
-			function (v) {
-				return _elm_lang$core$Native_Utils.update(
-					v,
-					{
-						position: A2(_elm_community$linear_algebra$Math_Matrix4$transform, t, v.position)
-					});
-			}),
-		_feldman4$elm_xb$Main$face);
-};
-var _feldman4$elm_xb$Main$crate = _elm_community$webgl$WebGL$Triangle(
-	A2(
-		_elm_lang$core$List$concatMap,
-		_feldman4$elm_xb$Main$rotatedFace,
-		{
-			ctor: '::',
-			_0: {ctor: '_Tuple2', _0: 0, _1: 0},
-			_1: {
-				ctor: '::',
-				_0: {ctor: '_Tuple2', _0: 90, _1: 0},
-				_1: {
-					ctor: '::',
-					_0: {ctor: '_Tuple2', _0: 180, _1: 0},
-					_1: {
-						ctor: '::',
-						_0: {ctor: '_Tuple2', _0: 270, _1: 0},
-						_1: {
-							ctor: '::',
-							_0: {ctor: '_Tuple2', _0: 0, _1: 90},
-							_1: {
-								ctor: '::',
-								_0: {ctor: '_Tuple2', _0: 0, _1: -90},
-								_1: {ctor: '[]'}
-							}
-						}
-					}
-				}
-			}
-		}));
-var _feldman4$elm_xb$Main$world = F2(
-	function (maybeTexture, perspective) {
-		var _p13 = maybeTexture;
-		if (_p13.ctor === 'Nothing') {
-			return {ctor: '[]'};
-		} else {
-			return {
-				ctor: '::',
-				_0: A4(
-					_elm_community$webgl$WebGL$render,
-					_feldman4$elm_xb$Main$vertexShader,
-					_feldman4$elm_xb$Main$fragmentShader,
-					_feldman4$elm_xb$Main$crate,
-					{crate: _p13._0, perspective: perspective}),
-				_1: {ctor: '[]'}
-			};
-		}
-	});
-var _feldman4$elm_xb$Main$view = function (_p14) {
-	var _p15 = _p14;
-	var _p16 = _p15.size;
+	}();
+	var newPerson = _elm_lang$core$Native_Utils.update(
+		_p9,
+		{position: newPosition});
 	var perspectiveMatrix = A2(
 		_feldman4$elm_xb$Main$perspective,
-		{ctor: '_Tuple2', _0: _p16.width, _1: _p16.height},
-		_p15.person);
-	var entities = A2(_feldman4$elm_xb$Main$world, _p15.texture, perspectiveMatrix);
+		{ctor: '_Tuple2', _0: _p10.width, _1: _p10.height},
+		newPerson);
+	var entities = A3(_feldman4$elm_xb$PTree$worldTree, _feldman4$elm_xb$PTree$exampleTreeBase, _feldman4$elm_xb$PTree$exampleTreeOrigin, perspectiveMatrix);
 	return A2(
 		_elm_lang$html$Html$div,
 		{
@@ -12446,7 +12694,7 @@ var _feldman4$elm_xb$Main$view = function (_p14) {
 						_0: 'width',
 						_1: A2(
 							_elm_lang$core$Basics_ops['++'],
-							_elm_lang$core$Basics$toString(_p16.width),
+							_elm_lang$core$Basics$toString(_p10.width),
 							'px')
 					},
 					_1: {
@@ -12456,7 +12704,7 @@ var _feldman4$elm_xb$Main$view = function (_p14) {
 							_0: 'height',
 							_1: A2(
 								_elm_lang$core$Basics_ops['++'],
-								_elm_lang$core$Basics$toString(_p16.height),
+								_elm_lang$core$Basics$toString(_p10.height),
 								'px')
 						},
 						_1: {
@@ -12474,10 +12722,10 @@ var _feldman4$elm_xb$Main$view = function (_p14) {
 				_elm_community$webgl$WebGL$toHtml,
 				{
 					ctor: '::',
-					_0: _elm_lang$html$Html_Attributes$width(_p16.width),
+					_0: _elm_lang$html$Html_Attributes$width(_p10.width),
 					_1: {
 						ctor: '::',
-						_0: _elm_lang$html$Html_Attributes$height(_p16.height),
+						_0: _elm_lang$html$Html_Attributes$height(_p10.height),
 						_1: {
 							ctor: '::',
 							_0: _elm_lang$html$Html_Attributes$style(
@@ -12534,8 +12782,327 @@ var _feldman4$elm_xb$Main$view = function (_p14) {
 			}
 		});
 };
+var _feldman4$elm_xb$Main$crouch = F2(
+	function (on, person) {
+		return on ? _elm_lang$core$Native_Utils.update(
+			person,
+			{crouch: true}) : _elm_lang$core$Native_Utils.update(
+			person,
+			{crouch: false});
+	});
+var _feldman4$elm_xb$Main$directions = function (_p11) {
+	var _p12 = _p11;
+	var direction = F2(
+		function (a, b) {
+			var _p13 = {ctor: '_Tuple2', _0: a, _1: b};
+			_v6_2:
+			do {
+				if (_p13.ctor === '_Tuple2') {
+					if (_p13._0 === true) {
+						if (_p13._1 === false) {
+							return -2;
+						} else {
+							break _v6_2;
+						}
+					} else {
+						if (_p13._1 === true) {
+							return 2;
+						} else {
+							break _v6_2;
+						}
+					}
+				} else {
+					break _v6_2;
+				}
+			} while(false);
+			return 0;
+		});
+	return {
+		x: A2(direction, _p12.left, _p12.right),
+		y: A2(direction, _p12.down, _p12.up)
+	};
+};
+var _feldman4$elm_xb$Main$eyeLevel = 2;
+var _feldman4$elm_xb$Main$defaultPerson = {
+	position: A3(_elm_community$linear_algebra$Math_Vector3$vec3, 0, _feldman4$elm_xb$Main$eyeLevel, -10),
+	velocity: A3(_elm_community$linear_algebra$Math_Vector3$vec3, 0, 0, 0),
+	gaze: _elm_community$linear_algebra$Math_Vector3$k,
+	crouch: false
+};
+var _feldman4$elm_xb$Main$walk = F2(
+	function (directions, person) {
+		if (_elm_lang$core$Native_Utils.cmp(
+			_elm_community$linear_algebra$Math_Vector3$getY(person.position),
+			_feldman4$elm_xb$Main$eyeLevel) > 0) {
+			return person;
+		} else {
+			var vz = _elm_lang$core$Basics$toFloat(directions.y);
+			var vx = _elm_lang$core$Basics$toFloat(0 - directions.x);
+			return _elm_lang$core$Native_Utils.update(
+				person,
+				{
+					velocity: A3(
+						_elm_community$linear_algebra$Math_Vector3$vec3,
+						vx,
+						_elm_community$linear_algebra$Math_Vector3$getY(person.velocity),
+						vz)
+				});
+		}
+	});
+var _feldman4$elm_xb$Main$jump = F2(
+	function (isJumping, person) {
+		if ((!isJumping) || (_elm_lang$core$Native_Utils.cmp(
+			_elm_community$linear_algebra$Math_Vector3$getY(person.position),
+			_feldman4$elm_xb$Main$eyeLevel) > 0)) {
+			return person;
+		} else {
+			var _p14 = _elm_community$linear_algebra$Math_Vector3$toTuple(person.velocity);
+			var vx = _p14._0;
+			var vz = _p14._2;
+			return _elm_lang$core$Native_Utils.update(
+				person,
+				{
+					velocity: A3(_elm_community$linear_algebra$Math_Vector3$vec3, vx, 2, vz)
+				});
+		}
+	});
+var _feldman4$elm_xb$Main$physics = F2(
+	function (dt, person) {
+		var position = A2(
+			_elm_community$linear_algebra$Math_Vector3$add,
+			person.position,
+			A2(_elm_community$linear_algebra$Math_Vector3$scale, dt, person.velocity));
+		var _p15 = _elm_community$linear_algebra$Math_Vector3$toTuple(position);
+		var x = _p15._0;
+		var y = _p15._1;
+		var z = _p15._2;
+		return _elm_lang$core$Native_Utils.update(
+			person,
+			{
+				position: (_elm_lang$core$Native_Utils.cmp(y, _feldman4$elm_xb$Main$eyeLevel) < 0) ? A3(_elm_community$linear_algebra$Math_Vector3$vec3, x, _feldman4$elm_xb$Main$eyeLevel, z) : position
+			});
+	});
+var _feldman4$elm_xb$Main$gravity = F2(
+	function (dt, person) {
+		if (_elm_lang$core$Native_Utils.cmp(
+			_elm_community$linear_algebra$Math_Vector3$getY(person.position),
+			_feldman4$elm_xb$Main$eyeLevel) < 1) {
+			return person;
+		} else {
+			var v = _elm_community$linear_algebra$Math_Vector3$toRecord(person.velocity);
+			return _elm_lang$core$Native_Utils.update(
+				person,
+				{
+					velocity: A3(_elm_community$linear_algebra$Math_Vector3$vec3, v.x, v.y - (2 * dt), v.z)
+				});
+		}
+	});
+var _feldman4$elm_xb$Main$Person = F4(
+	function (a, b, c, d) {
+		return {position: a, velocity: b, gaze: c, crouch: d};
+	});
+var _feldman4$elm_xb$Main$Keys = F6(
+	function (a, b, c, d, e, f) {
+		return {left: a, right: b, up: c, down: d, space: e, z: f};
+	});
+var _feldman4$elm_xb$Main$Model = F5(
+	function (a, b, c, d, e) {
+		return {texture: a, keys: b, size: c, person: d, dragModel: e};
+	});
+var _feldman4$elm_xb$Main$Vertex = F2(
+	function (a, b) {
+		return {position: a, coord: b};
+	});
+var _feldman4$elm_xb$Main$crateFace = function () {
+	var bottomRight = A2(
+		_feldman4$elm_xb$Main$Vertex,
+		A3(_elm_community$linear_algebra$Math_Vector3$vec3, 1, -1, 1),
+		A3(_elm_community$linear_algebra$Math_Vector3$vec3, 1, 0, 0));
+	var bottomLeft = A2(
+		_feldman4$elm_xb$Main$Vertex,
+		A3(_elm_community$linear_algebra$Math_Vector3$vec3, -1, -1, 1),
+		A3(_elm_community$linear_algebra$Math_Vector3$vec3, 0, 0, 0));
+	var topRight = A2(
+		_feldman4$elm_xb$Main$Vertex,
+		A3(_elm_community$linear_algebra$Math_Vector3$vec3, 1, 1, 1),
+		A3(_elm_community$linear_algebra$Math_Vector3$vec3, 1, 1, 0));
+	var topLeft = A2(
+		_feldman4$elm_xb$Main$Vertex,
+		A3(_elm_community$linear_algebra$Math_Vector3$vec3, -1, 1, 1),
+		A3(_elm_community$linear_algebra$Math_Vector3$vec3, 0, 1, 0));
+	return {
+		ctor: '::',
+		_0: {ctor: '_Tuple3', _0: topLeft, _1: topRight, _2: bottomLeft},
+		_1: {
+			ctor: '::',
+			_0: {ctor: '_Tuple3', _0: bottomLeft, _1: topRight, _2: bottomRight},
+			_1: {ctor: '[]'}
+		}
+	};
+}();
+var _feldman4$elm_xb$Main$crate = _elm_community$webgl$WebGL$Triangle(
+	A2(
+		_elm_lang$core$List$concatMap,
+		function (x) {
+			return A2(_feldman4$elm_xb$Main$rotateFace, x, _feldman4$elm_xb$Main$crateFace);
+		},
+		{
+			ctor: '::',
+			_0: {ctor: '_Tuple3', _0: 0, _1: 0, _2: 0},
+			_1: {
+				ctor: '::',
+				_0: {ctor: '_Tuple3', _0: 90, _1: 0, _2: 0},
+				_1: {
+					ctor: '::',
+					_0: {ctor: '_Tuple3', _0: 180, _1: 0, _2: 0},
+					_1: {
+						ctor: '::',
+						_0: {ctor: '_Tuple3', _0: 270, _1: 0, _2: 0},
+						_1: {
+							ctor: '::',
+							_0: {ctor: '_Tuple3', _0: 0, _1: 90, _2: 0},
+							_1: {
+								ctor: '::',
+								_0: {ctor: '_Tuple3', _0: 0, _1: -90, _2: 0},
+								_1: {ctor: '[]'}
+							}
+						}
+					}
+				}
+			}
+		}));
+var _feldman4$elm_xb$Main$world = F2(
+	function (maybeTexture, perspective) {
+		var _p16 = maybeTexture;
+		if (_p16.ctor === 'Nothing') {
+			return {ctor: '[]'};
+		} else {
+			var uniforms = {crate: _p16._0, perspective: perspective};
+			return {
+				ctor: '::',
+				_0: A4(_elm_community$webgl$WebGL$render, _feldman4$elm_xb$Main$vertexShader, _feldman4$elm_xb$Main$fragmentShader, _feldman4$elm_xb$Main$crate, uniforms),
+				_1: {ctor: '[]'}
+			};
+		}
+	});
+var _feldman4$elm_xb$Main$Drag = function (a) {
+	return {ctor: 'Drag', _0: a};
+};
+var _feldman4$elm_xb$Main$update = F2(
+	function (action, model) {
+		var _p17 = action;
+		switch (_p17.ctor) {
+			case 'TextureError':
+				return {ctor: '_Tuple2', _0: model, _1: _elm_lang$core$Platform_Cmd$none};
+			case 'TextureLoaded':
+				return {
+					ctor: '_Tuple2',
+					_0: _elm_lang$core$Native_Utils.update(
+						model,
+						{
+							texture: _elm_lang$core$Maybe$Just(_p17._0)
+						}),
+					_1: _elm_lang$core$Platform_Cmd$none
+				};
+			case 'KeyChange':
+				return {
+					ctor: '_Tuple2',
+					_0: _elm_lang$core$Native_Utils.update(
+						model,
+						{
+							keys: _p17._0(model.keys)
+						}),
+					_1: _elm_lang$core$Platform_Cmd$none
+				};
+			case 'Resize':
+				return {
+					ctor: '_Tuple2',
+					_0: _elm_lang$core$Native_Utils.update(
+						model,
+						{size: _p17._0}),
+					_1: _elm_lang$core$Platform_Cmd$none
+				};
+			case 'DragMsg':
+				var _p18 = A3(_hoelzro$elm_drag$Drag$update, _feldman4$elm_xb$Main$Drag, _p17._0, model.dragModel);
+				var newDragModel = _p18._0;
+				var dragCmd = _p18._1;
+				return {
+					ctor: '_Tuple2',
+					_0: _elm_lang$core$Native_Utils.update(
+						model,
+						{dragModel: newDragModel}),
+					_1: dragCmd
+				};
+			case 'Drag':
+				var person = model.person;
+				var sideways = _elm_community$linear_algebra$Math_Vector3$normalize(
+					A2(_elm_community$linear_algebra$Math_Vector3$cross, model.person.gaze, _elm_community$linear_algebra$Math_Vector3$j));
+				var dy = _elm_lang$core$Basics$toFloat(_p17._0._1) / -200;
+				var dx = _elm_lang$core$Basics$toFloat(_p17._0._0) / -200;
+				var r = A3(
+					_elm_community$linear_algebra$Math_Matrix4$rotate,
+					dy,
+					sideways,
+					A2(_elm_community$linear_algebra$Math_Matrix4$makeRotate, dx, _elm_community$linear_algebra$Math_Vector3$j));
+				var newGaze = A2(_elm_community$linear_algebra$Math_Matrix4$transform, r, model.person.gaze);
+				var newPerson = _elm_lang$core$Native_Utils.update(
+					person,
+					{gaze: newGaze});
+				return A2(
+					_elm_lang$core$Platform_Cmd_ops['!'],
+					_elm_lang$core$Native_Utils.update(
+						model,
+						{person: newPerson}),
+					{ctor: '[]'});
+			default:
+				var _p19 = _p17._0;
+				return {
+					ctor: '_Tuple2',
+					_0: _elm_lang$core$Native_Utils.update(
+						model,
+						{
+							person: A2(
+								_feldman4$elm_xb$Main$physics,
+								_p19 / 500,
+								A2(
+									_feldman4$elm_xb$Main$gravity,
+									_p19 / 500,
+									A2(
+										_feldman4$elm_xb$Main$crouch,
+										model.keys.z,
+										A2(
+											_feldman4$elm_xb$Main$jump,
+											model.keys.space,
+											A2(
+												_feldman4$elm_xb$Main$walk,
+												_feldman4$elm_xb$Main$directions(model.keys),
+												model.person)))))
+						}),
+					_1: _elm_lang$core$Platform_Cmd$none
+				};
+		}
+	});
+var _feldman4$elm_xb$Main$DragMsg = function (a) {
+	return {ctor: 'DragMsg', _0: a};
+};
 var _feldman4$elm_xb$Main$Resize = function (a) {
 	return {ctor: 'Resize', _0: a};
+};
+var _feldman4$elm_xb$Main$init = {
+	ctor: '_Tuple2',
+	_0: {
+		texture: _elm_lang$core$Maybe$Nothing,
+		person: _feldman4$elm_xb$Main$defaultPerson,
+		keys: A6(_feldman4$elm_xb$Main$Keys, false, false, false, false, false, false),
+		size: A2(_elm_lang$window$Window$Size, 0, 0),
+		dragModel: _hoelzro$elm_drag$Drag$initialModel
+	},
+	_1: _elm_lang$core$Platform_Cmd$batch(
+		{
+			ctor: '::',
+			_0: A2(_elm_lang$core$Task$perform, _feldman4$elm_xb$Main$Resize, _elm_lang$window$Window$size),
+			_1: {ctor: '[]'}
+		})
 };
 var _feldman4$elm_xb$Main$Animate = function (a) {
 	return {ctor: 'Animate', _0: a};
@@ -12547,8 +13114,8 @@ var _feldman4$elm_xb$Main$keyChange = F2(
 	function (on, keyCode) {
 		return _feldman4$elm_xb$Main$KeyChange(
 			function () {
-				var _p17 = keyCode;
-				switch (_p17) {
+				var _p20 = keyCode;
+				switch (_p20) {
 					case 32:
 						return function (k) {
 							return _elm_lang$core$Native_Utils.update(
@@ -12579,18 +13146,18 @@ var _feldman4$elm_xb$Main$keyChange = F2(
 								k,
 								{down: on});
 						};
-					case 122:
+					case 90:
 						return function (k) {
 							return _elm_lang$core$Native_Utils.update(
 								k,
-								{shift: on});
+								{z: on});
 						};
 					default:
 						return _elm_lang$core$Basics$identity;
 				}
 			}());
 	});
-var _feldman4$elm_xb$Main$subscriptions = function (_p18) {
+var _feldman4$elm_xb$Main$subscriptions = function (model) {
 	return _elm_lang$core$Platform_Sub$batch(
 		{
 			ctor: '::',
@@ -12606,49 +13173,24 @@ var _feldman4$elm_xb$Main$subscriptions = function (_p18) {
 					_1: {
 						ctor: '::',
 						_0: _elm_lang$window$Window$resizes(_feldman4$elm_xb$Main$Resize),
-						_1: {ctor: '[]'}
+						_1: {
+							ctor: '::',
+							_0: A2(_hoelzro$elm_drag$Drag$subscriptions, _feldman4$elm_xb$Main$DragMsg, model.dragModel),
+							_1: {ctor: '[]'}
+						}
 					}
 				}
 			}
 		});
 };
+var _feldman4$elm_xb$Main$main = _elm_lang$html$Html$program(
+	{init: _feldman4$elm_xb$Main$init, view: _feldman4$elm_xb$Main$view, subscriptions: _feldman4$elm_xb$Main$subscriptions, update: _feldman4$elm_xb$Main$update})();
 var _feldman4$elm_xb$Main$TextureLoaded = function (a) {
 	return {ctor: 'TextureLoaded', _0: a};
 };
 var _feldman4$elm_xb$Main$TextureError = function (a) {
 	return {ctor: 'TextureError', _0: a};
 };
-var _feldman4$elm_xb$Main$init = {
-	ctor: '_Tuple2',
-	_0: {
-		texture: _elm_lang$core$Maybe$Nothing,
-		person: _feldman4$elm_xb$Main$defaultPerson,
-		keys: A6(_feldman4$elm_xb$Main$Keys, false, false, false, false, false, false),
-		size: A2(_elm_lang$window$Window$Size, 0, 0)
-	},
-	_1: _elm_lang$core$Platform_Cmd$batch(
-		{
-			ctor: '::',
-			_0: A2(
-				_elm_lang$core$Task$attempt,
-				function (result) {
-					var _p19 = result;
-					if (_p19.ctor === 'Err') {
-						return _feldman4$elm_xb$Main$TextureError(_p19._0);
-					} else {
-						return _feldman4$elm_xb$Main$TextureLoaded(_p19._0);
-					}
-				},
-				_elm_community$webgl$WebGL$loadTexture('texture/woodCrate.jpg')),
-			_1: {
-				ctor: '::',
-				_0: A2(_elm_lang$core$Task$perform, _feldman4$elm_xb$Main$Resize, _elm_lang$window$Window$size),
-				_1: {ctor: '[]'}
-			}
-		})
-};
-var _feldman4$elm_xb$Main$main = _elm_lang$html$Html$program(
-	{init: _feldman4$elm_xb$Main$init, view: _feldman4$elm_xb$Main$view, subscriptions: _feldman4$elm_xb$Main$subscriptions, update: _feldman4$elm_xb$Main$update})();
 var Elm = {};
 Elm['Main'] = Elm['Main'] || {};
 if (typeof _feldman4$elm_xb$Main$main !== 'undefined') {
