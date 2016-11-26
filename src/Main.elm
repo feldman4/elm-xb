@@ -145,17 +145,7 @@ init =
       , dragModel = Drag.initialModel
       }
     , Cmd.batch
-        [ loadTexture "texture/woodCrate.jpg"
-            |> Task.attempt
-                (\result ->
-                    case result of
-                        Err err ->
-                            TextureError err
-
-                        Ok val ->
-                            TextureLoaded val
-                )
-        , Task.perform Resize Window.size
+        [ Task.perform Resize Window.size
         ]
     )
 
