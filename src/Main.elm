@@ -3,7 +3,7 @@
 
 module Main exposing (..)
 
-import Keyboard
+import Keyboard exposing (KeyCode)
 import Math.Vector3 exposing (..)
 import Math.Vector3 as V3
 import Math.Matrix4 exposing (..)
@@ -55,7 +55,7 @@ type alias Keys =
 
 
 type Action
-    = KeyChange (Keys -> Keys)
+    = KeyChange ( Bool, KeyCode )
     | Animate Time
     | Resize Window.Size
     | DragMsg Drag.Msg
@@ -105,8 +105,8 @@ init =
 update : Action -> Model -> ( Model, Cmd Action )
 update action model =
     case action of
-        KeyChange keyfunc ->
-            ( { model | keys = keyfunc model.keys }, Cmd.none )
+        KeyChange msg ->
+            ( { model | keys = updateKeys msg model.keys }, Cmd.none )
 
         Resize size ->
             ( { model | size = size }, Cmd.none )
@@ -203,29 +203,32 @@ subscriptions model =
 
 keyChange : Bool -> Keyboard.KeyCode -> Action
 keyChange on keyCode =
-    (case keyCode of
+    KeyChange ( on, keyCode )
+
+
+updateKeys : ( Bool, Keyboard.KeyCode ) -> Keys -> Keys
+updateKeys ( on, keyCode ) k =
+    case keyCode of
         16 ->
-            \k -> { k | shift = on }
+            { k | shift = on }
 
         37 ->
-            \k -> { k | left = on }
+            { k | left = on }
 
         39 ->
-            \k -> { k | right = on }
+            { k | right = on }
 
         38 ->
-            \k -> { k | up = on }
+            { k | up = on }
 
         40 ->
-            \k -> { k | down = on }
+            { k | down = on }
 
         90 ->
-            \k -> { k | z = on }
+            { k | z = on }
 
         _ ->
-            Basics.identity
-    )
-        |> KeyChange
+            k
 
 
 main : Program Never Model Action
