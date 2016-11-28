@@ -288,9 +288,6 @@ exampleForest =
                 |> Random.list numTrees
                 |> flip Random.step seed1
 
-        a =
-            Debug.log "offsets" quadOffsets
-
         applyTreeOffset x =
             { quad = eachQuad (V3.add x) exampleTreeBase
             , origin = V3.add exampleTreeOrigin x
@@ -303,7 +300,7 @@ exampleForest =
             |> List.map2 applyQuadOffsets quadOffsets
 
 
-exampleSpringyForest : List { origin : Vec3, quad : SpringyQuad }
+exampleSpringyForest : List STree
 exampleSpringyForest =
     let
         kick x =
@@ -313,6 +310,19 @@ exampleSpringyForest =
             { base | quad = quadToSQuad base.quad |> eachQuad kick }
     in
         List.map addSpring exampleForest
+
+
+type alias STree =
+    { origin : Vec3, quad : SpringyQuad }
+
+
+kick : Vec3 -> STree -> STree
+kick pow tree =
+    let
+        kicker x =
+            { x | velocity = V3.add pow x.velocity }
+    in
+        { tree | quad = eachQuad kicker tree.quad }
 
 
 angleBetween : Vec3 -> Vec3 -> Float

@@ -15805,13 +15805,27 @@ var _feldman4$elm_xb$PTree$exampleForest = function () {
 					_mgold$elm_random_pcg$Random_Pcg$constant(0)))));
 	var quadOffsets = _p6._0;
 	var seed2 = _p6._1;
-	var a = A2(_elm_lang$core$Debug$log, 'offsets', quadOffsets);
 	return A3(
 		_elm_lang$core$List$map2,
 		applyQuadOffsets,
 		quadOffsets,
 		A2(_elm_lang$core$List$map, applyTreeOffset, treeOffsets));
 }();
+var _feldman4$elm_xb$PTree$kick = F2(
+	function (pow, tree) {
+		var kicker = function (x) {
+			return _elm_lang$core$Native_Utils.update(
+				x,
+				{
+					velocity: A2(_elm_community$linear_algebra$Math_Vector3$add, pow, x.velocity)
+				});
+		};
+		return _elm_lang$core$Native_Utils.update(
+			tree,
+			{
+				quad: A2(_feldman4$elm_xb$PTree$eachQuad, kicker, tree.quad)
+			});
+	});
 var _feldman4$elm_xb$PTree$sQuadToQuad = function (_p7) {
 	var _p8 = _p7;
 	return {ctor: '_Tuple4', _0: _p8._0.position, _1: _p8._1.position, _2: _p8._2.position, _3: _p8._3.position};
@@ -16070,6 +16084,10 @@ var _feldman4$elm_xb$PTree$Spring = F5(
 var _feldman4$elm_xb$PTree$TreeBase = F2(
 	function (a, b) {
 		return {quad: a, origin: b};
+	});
+var _feldman4$elm_xb$PTree$STree = F2(
+	function (a, b) {
+		return {origin: a, quad: b};
 	});
 var _hoelzro$elm_drag$Drag$dragCmd = F3(
 	function (constructor, _p1, _p0) {
@@ -16397,139 +16415,6 @@ var _feldman4$elm_xb$Typewriter_Typewriter$AddSentence = function (a) {
 var _feldman4$elm_xb$Typewriter_Typewriter$AddWord = function (a) {
 	return {ctor: 'AddWord', _0: a};
 };
-var _feldman4$elm_xb$Typewriter_Typewriter$update = F2(
-	function (msg, model) {
-		update:
-		while (true) {
-			var _p0 = msg;
-			switch (_p0.ctor) {
-				case 'UpdateWriter':
-					var _p1 = A2(_feldman4$elm_xb$Typewriter_Base$update, _p0._0, model.writer);
-					var newWriter = _p1._0;
-					var newWriterMsg = _p1._1;
-					var complete = _feldman4$elm_xb$Typewriter_Base$choiceComplete(newWriter);
-					var newModel = _elm_lang$core$Native_Utils.update(
-						model,
-						{writer: newWriter});
-					if (complete) {
-						var nextWord = _feldman4$elm_xb$Typewriter_Base$choice(newWriter);
-						var _p2 = nextWord;
-						if (_p2.ctor === 'Just') {
-							var _v2 = _feldman4$elm_xb$Typewriter_Typewriter$AddWord(_p2._0),
-								_v3 = model;
-							msg = _v2;
-							model = _v3;
-							continue update;
-						} else {
-							var _v4 = _feldman4$elm_xb$Typewriter_Typewriter$AddSentence(model.phrase),
-								_v5 = model;
-							msg = _v4;
-							model = _v5;
-							continue update;
-						}
-					} else {
-						if (_elm_lang$core$Native_Utils.eq(
-							newWriter.lastKey,
-							function (_) {
-								return _.backspace;
-							}(_feldman4$elm_xb$Typewriter_Base$keycode)) && _elm_lang$core$Native_Utils.eq(newWriter.input, '')) {
-							var _v6 = _feldman4$elm_xb$Typewriter_Typewriter$DeleteWord,
-								_v7 = newModel;
-							msg = _v6;
-							model = _v7;
-							continue update;
-						} else {
-							return A2(
-								_elm_lang$core$Platform_Cmd_ops['!'],
-								_elm_lang$core$Native_Utils.update(
-									model,
-									{writer: newWriter}),
-								{ctor: '[]'});
-						}
-					}
-				case 'DeleteWord':
-					var writer = model.writer;
-					var newPhrase = _elm_lang$core$List$reverse(
-						A2(
-							_elm_lang$core$List$drop,
-							1,
-							_elm_lang$core$List$reverse(model.phrase)));
-					var newChoices = A3(
-						_feldman4$elm_xb$CFG$choices,
-						model.grammar,
-						_feldman4$elm_xb$CFG$S,
-						A2(_elm_lang$core$List$map, _feldman4$elm_xb$CFG$Terminal, newPhrase));
-					var newModel = _elm_lang$core$Native_Utils.update(
-						model,
-						{
-							phrase: newPhrase,
-							writer: _elm_lang$core$Native_Utils.update(
-								writer,
-								{choices: newChoices, input: ''})
-						});
-					return A2(
-						_elm_lang$core$Platform_Cmd_ops['!'],
-						newModel,
-						{ctor: '[]'});
-				case 'AddWord':
-					var writer = model.writer;
-					var newModel = _elm_lang$core$Native_Utils.update(
-						model,
-						{
-							phrase: A2(
-								_elm_lang$core$Basics_ops['++'],
-								model.phrase,
-								{
-									ctor: '::',
-									_0: _p0._0,
-									_1: {ctor: '[]'}
-								})
-						});
-					var choices = A3(
-						_feldman4$elm_xb$CFG$choices,
-						model.grammar,
-						_feldman4$elm_xb$CFG$S,
-						A2(_elm_lang$core$List$map, _feldman4$elm_xb$CFG$Terminal, newModel.phrase));
-					var a = A2(_elm_lang$core$Debug$log, 'choices', choices);
-					if (_elm_lang$core$List$isEmpty(choices)) {
-						var _v8 = _feldman4$elm_xb$Typewriter_Typewriter$AddSentence(newModel.phrase),
-							_v9 = newModel;
-						msg = _v8;
-						model = _v9;
-						continue update;
-					} else {
-						return A2(
-							_elm_lang$core$Platform_Cmd_ops['!'],
-							_elm_lang$core$Native_Utils.update(
-								newModel,
-								{
-									writer: _elm_lang$core$Native_Utils.update(
-										writer,
-										{choices: choices, input: ''})
-								}),
-							{ctor: '[]'});
-					}
-				default:
-					return A2(
-						_elm_lang$core$Platform_Cmd_ops['!'],
-						_elm_lang$core$Native_Utils.update(
-							model,
-							{
-								writer: _feldman4$elm_xb$Typewriter_Typewriter$initWriter(model.grammar),
-								history: A2(
-									_elm_lang$core$Basics_ops['++'],
-									model.history,
-									{
-										ctor: '::',
-										_0: _p0._0,
-										_1: {ctor: '[]'}
-									}),
-								phrase: {ctor: '[]'}
-							}),
-						{ctor: '[]'});
-			}
-		}
-	});
 var _feldman4$elm_xb$Typewriter_Typewriter$UpdateWriter = function (a) {
 	return {ctor: 'UpdateWriter', _0: a};
 };
@@ -16594,13 +16479,159 @@ var _feldman4$elm_xb$Typewriter_Typewriter$subscriptions = function (model) {
 			_1: {ctor: '[]'}
 		});
 };
-var _feldman4$elm_xb$Typewriter_Typewriter$main = _elm_lang$html$Html$program(
-	{
-		init: _feldman4$elm_xb$Typewriter_Typewriter$init(_feldman4$elm_xb$CFG$exampleCFG),
-		update: _feldman4$elm_xb$Typewriter_Typewriter$update,
-		view: _feldman4$elm_xb$Typewriter_Typewriter$view,
-		subscriptions: _feldman4$elm_xb$Typewriter_Typewriter$subscriptions
-	})();
+var _feldman4$elm_xb$Typewriter_Typewriter$SentenceAdded = {ctor: 'SentenceAdded'};
+var _feldman4$elm_xb$Typewriter_Typewriter$update = F2(
+	function (msg, model) {
+		update:
+		while (true) {
+			var _p0 = msg;
+			switch (_p0.ctor) {
+				case 'UpdateWriter':
+					var _p1 = A2(_feldman4$elm_xb$Typewriter_Base$update, _p0._0, model.writer);
+					var newWriter = _p1._0;
+					var newWriterMsg = _p1._1;
+					var complete = _feldman4$elm_xb$Typewriter_Base$choiceComplete(newWriter);
+					var newModel = _elm_lang$core$Native_Utils.update(
+						model,
+						{writer: newWriter});
+					if (complete) {
+						var nextWord = _feldman4$elm_xb$Typewriter_Base$choice(newWriter);
+						var _p2 = nextWord;
+						if (_p2.ctor === 'Just') {
+							var _v2 = _feldman4$elm_xb$Typewriter_Typewriter$AddWord(_p2._0),
+								_v3 = model;
+							msg = _v2;
+							model = _v3;
+							continue update;
+						} else {
+							var _v4 = _feldman4$elm_xb$Typewriter_Typewriter$AddSentence(model.phrase),
+								_v5 = model;
+							msg = _v4;
+							model = _v5;
+							continue update;
+						}
+					} else {
+						if (_elm_lang$core$Native_Utils.eq(
+							newWriter.lastKey,
+							function (_) {
+								return _.backspace;
+							}(_feldman4$elm_xb$Typewriter_Base$keycode)) && _elm_lang$core$Native_Utils.eq(newWriter.input, '')) {
+							var _v6 = _feldman4$elm_xb$Typewriter_Typewriter$DeleteWord,
+								_v7 = newModel;
+							msg = _v6;
+							model = _v7;
+							continue update;
+						} else {
+							return {
+								ctor: '_Tuple3',
+								_0: _elm_lang$core$Native_Utils.update(
+									model,
+									{writer: newWriter}),
+								_1: _elm_lang$core$Platform_Cmd$none,
+								_2: _elm_lang$core$Maybe$Nothing
+							};
+						}
+					}
+				case 'DeleteWord':
+					var writer = model.writer;
+					var newPhrase = _elm_lang$core$List$reverse(
+						A2(
+							_elm_lang$core$List$drop,
+							1,
+							_elm_lang$core$List$reverse(model.phrase)));
+					var newChoices = A3(
+						_feldman4$elm_xb$CFG$choices,
+						model.grammar,
+						_feldman4$elm_xb$CFG$S,
+						A2(_elm_lang$core$List$map, _feldman4$elm_xb$CFG$Terminal, newPhrase));
+					var newModel = _elm_lang$core$Native_Utils.update(
+						model,
+						{
+							phrase: newPhrase,
+							writer: _elm_lang$core$Native_Utils.update(
+								writer,
+								{choices: newChoices, input: ''})
+						});
+					return {ctor: '_Tuple3', _0: newModel, _1: _elm_lang$core$Platform_Cmd$none, _2: _elm_lang$core$Maybe$Nothing};
+				case 'AddWord':
+					var writer = model.writer;
+					var newModel = _elm_lang$core$Native_Utils.update(
+						model,
+						{
+							phrase: A2(
+								_elm_lang$core$Basics_ops['++'],
+								model.phrase,
+								{
+									ctor: '::',
+									_0: _p0._0,
+									_1: {ctor: '[]'}
+								})
+						});
+					var choices = A3(
+						_feldman4$elm_xb$CFG$choices,
+						model.grammar,
+						_feldman4$elm_xb$CFG$S,
+						A2(_elm_lang$core$List$map, _feldman4$elm_xb$CFG$Terminal, newModel.phrase));
+					if (_elm_lang$core$List$isEmpty(choices)) {
+						var _v8 = _feldman4$elm_xb$Typewriter_Typewriter$AddSentence(newModel.phrase),
+							_v9 = newModel;
+						msg = _v8;
+						model = _v9;
+						continue update;
+					} else {
+						return {
+							ctor: '_Tuple3',
+							_0: _elm_lang$core$Native_Utils.update(
+								newModel,
+								{
+									writer: _elm_lang$core$Native_Utils.update(
+										writer,
+										{choices: choices, input: ''})
+								}),
+							_1: _elm_lang$core$Platform_Cmd$none,
+							_2: _elm_lang$core$Maybe$Nothing
+						};
+					}
+				default:
+					return {
+						ctor: '_Tuple3',
+						_0: _elm_lang$core$Native_Utils.update(
+							model,
+							{
+								writer: _feldman4$elm_xb$Typewriter_Typewriter$initWriter(model.grammar),
+								history: A2(
+									_elm_lang$core$Basics_ops['++'],
+									model.history,
+									{
+										ctor: '::',
+										_0: _p0._0,
+										_1: {ctor: '[]'}
+									}),
+								phrase: {ctor: '[]'}
+							}),
+						_1: _elm_lang$core$Platform_Cmd$none,
+						_2: _elm_lang$core$Maybe$Just(_feldman4$elm_xb$Typewriter_Typewriter$SentenceAdded)
+					};
+			}
+		}
+	});
+var _feldman4$elm_xb$Typewriter_Typewriter$main = function () {
+	var realUpdate = F2(
+		function (a, b) {
+			return function (_p3) {
+				var _p4 = _p3;
+				return {ctor: '_Tuple2', _0: _p4._0, _1: _p4._1};
+			}(
+				A2(_feldman4$elm_xb$Typewriter_Typewriter$update, a, b));
+		});
+	return _elm_lang$html$Html$program(
+		{
+			init: _feldman4$elm_xb$Typewriter_Typewriter$init(_feldman4$elm_xb$CFG$exampleCFG),
+			update: realUpdate,
+			view: _feldman4$elm_xb$Typewriter_Typewriter$view,
+			subscriptions: _feldman4$elm_xb$Typewriter_Typewriter$subscriptions
+		});
+}()();
 var _feldman4$elm_xb$Main$rotateFace = F2(
 	function (_p0, face) {
 		var _p1 = _p0;
@@ -16909,6 +16940,14 @@ var _feldman4$elm_xb$Main$directions = function (_p11) {
 		y: A2(direction, _p12.down, _p12.up)
 	};
 };
+var _feldman4$elm_xb$Main$updateElement = F3(
+	function (index, f, list) {
+		var apply = F2(
+			function (i, x) {
+				return _elm_lang$core$Native_Utils.eq(i, index) ? f(x) : x;
+			});
+		return A2(_elm_lang$core$List$indexedMap, apply, list);
+	});
 var _feldman4$elm_xb$Main$gazeSpeed = 1 / 200;
 var _feldman4$elm_xb$Main$eyeLevel = 2;
 var _feldman4$elm_xb$Main$defaultPerson = {
@@ -16999,9 +17038,9 @@ var _feldman4$elm_xb$Main$gravity = F2(
 				});
 		}
 	});
-var _feldman4$elm_xb$Main$Model = F6(
-	function (a, b, c, d, e, f) {
-		return {keys: a, size: b, person: c, dragModel: d, forest: e, speechModel: f};
+var _feldman4$elm_xb$Main$Model = F7(
+	function (a, b, c, d, e, f, g) {
+		return {keys: a, size: b, person: c, dragModel: d, forest: e, speechModel: f, seed: g};
 	});
 var _feldman4$elm_xb$Main$Person = F3(
 	function (a, b, c) {
@@ -17015,6 +17054,7 @@ var _feldman4$elm_xb$Main$Vertex = F2(
 	function (a, b) {
 		return {position: a, coord: b};
 	});
+var _feldman4$elm_xb$Main$KickTree = {ctor: 'KickTree'};
 var _feldman4$elm_xb$Main$SpeechMsg = function (a) {
 	return {ctor: 'SpeechMsg', _0: a};
 };
@@ -17082,21 +17122,67 @@ var _feldman4$elm_xb$Main$update = F2(
 								model.person)
 						}),
 					{ctor: '[]'});
+			case 'KickTree':
+				var gen = A2(
+					_mgold$elm_random_pcg$Random_Pcg$int,
+					0,
+					_elm_lang$core$List$length(model.forest));
+				var _p18 = A2(_mgold$elm_random_pcg$Random_Pcg$step, gen, model.seed);
+				var index = _p18._0;
+				var seed_ = _p18._1;
+				return A2(
+					_elm_lang$core$Platform_Cmd_ops['!'],
+					_elm_lang$core$Native_Utils.update(
+						model,
+						{
+							seed: seed_,
+							forest: A3(
+								_feldman4$elm_xb$Main$updateElement,
+								index,
+								_feldman4$elm_xb$PTree$kick(
+									A3(_elm_community$linear_algebra$Math_Vector3$vec3, 1, -1, 0)),
+								model.forest)
+						}),
+					{ctor: '[]'});
 			case 'SpeechMsg':
-				var _p18 = A2(_feldman4$elm_xb$Typewriter_Typewriter$update, _p16._0, model.speechModel);
-				var newSpeechModel = _p18._0;
-				var speechCmd = _p18._1;
+				var _p19 = A2(_feldman4$elm_xb$Typewriter_Typewriter$update, _p16._0, model.speechModel);
+				var newSpeechModel = _p19._0;
+				var speechCmd = _p19._1;
+				var speechEvent = _p19._2;
+				var newModel = _elm_lang$core$Native_Utils.update(
+					model,
+					{speechModel: newSpeechModel});
+				var _p20 = function () {
+					var _p21 = speechEvent;
+					if (_p21.ctor === 'Just') {
+						return A2(_feldman4$elm_xb$Main$update, _feldman4$elm_xb$Main$KickTree, newModel);
+					} else {
+						return A2(
+							_elm_lang$core$Platform_Cmd_ops['!'],
+							newModel,
+							{ctor: '[]'});
+					}
+				}();
+				var newModel2 = _p20._0;
+				var newMsg = _p20._1;
 				return {
 					ctor: '_Tuple2',
-					_0: _elm_lang$core$Native_Utils.update(
-						model,
-						{speechModel: newSpeechModel}),
-					_1: A2(_elm_lang$core$Platform_Cmd$map, _feldman4$elm_xb$Main$SpeechMsg, speechCmd)
+					_0: newModel2,
+					_1: _elm_lang$core$Platform_Cmd$batch(
+						{
+							ctor: '::',
+							_0: A2(_elm_lang$core$Platform_Cmd$map, _feldman4$elm_xb$Main$SpeechMsg, speechCmd),
+							_1: {
+								ctor: '::',
+								_0: newMsg,
+								_1: {ctor: '[]'}
+							}
+						})
 				};
 			default:
-				var _p19 = A3(_hoelzro$elm_drag$Drag$update, _feldman4$elm_xb$Main$Drag, _p16._0, model.dragModel);
-				var newDragModel = _p19._0;
-				var dragCmd = _p19._1;
+				var _p22 = A3(_hoelzro$elm_drag$Drag$update, _feldman4$elm_xb$Main$Drag, _p16._0, model.dragModel);
+				var newDragModel = _p22._0;
+				var dragCmd = _p22._1;
 				return {
 					ctor: '_Tuple2',
 					_0: _elm_lang$core$Native_Utils.update(
@@ -17121,7 +17207,8 @@ var _feldman4$elm_xb$Main$init = {
 		dragModel: _hoelzro$elm_drag$Drag$initialModel,
 		speechModel: _elm_lang$core$Tuple$first(
 			_feldman4$elm_xb$Typewriter_Typewriter$init(_feldman4$elm_xb$CFG$exampleCFG)),
-		forest: _feldman4$elm_xb$PTree$exampleSpringyForest
+		forest: _feldman4$elm_xb$PTree$exampleSpringyForest,
+		seed: _mgold$elm_random_pcg$Random_Pcg$initialSeed(22783283)
 	},
 	_1: _elm_lang$core$Platform_Cmd$batch(
 		{
@@ -17140,8 +17227,8 @@ var _feldman4$elm_xb$Main$keyChange = F2(
 	function (on, keyCode) {
 		return _feldman4$elm_xb$Main$KeyChange(
 			function () {
-				var _p20 = keyCode;
-				switch (_p20) {
+				var _p23 = keyCode;
+				switch (_p23) {
 					case 16:
 						return function (k) {
 							return _elm_lang$core$Native_Utils.update(

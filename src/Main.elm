@@ -20,6 +20,7 @@ import PTree
 import Drag
 import Typewriter.Typewriter as Speech
 import CFG
+import Random.Pcg as Random
 
 
 -- MODEL
@@ -32,6 +33,7 @@ type alias Model =
     , dragModel : Drag.Model
     , forest : List (PTree.TreeBase PTree.SpringyQuad)
     , speechModel : Speech.Model
+    , seed : Random.Seed
     }
 
 
@@ -59,6 +61,7 @@ type Action
     | DragMsg Drag.Msg
     | Drag ( Int, Int )
     | SpeechMsg Speech.Msg
+    | KickTree
 
 
 eyeLevel : Float
@@ -91,6 +94,7 @@ init =
       , dragModel = Drag.initialModel
       , speechModel = Speech.init CFG.exampleCFG |> Tuple.first
       , forest = PTree.exampleSpringyForest
+      , seed = Random.initialSeed 22783283
       }
     , Cmd.batch
         [ Task.perform Resize Window.size
@@ -129,12 +133,41 @@ update action model =
             }
                 ! []
 
+        KickTree ->
+            let
+                gen =
+                    Random.int 0 (List.length model.forest)
+
+                ( index, seed_ ) =
+                    Random.step gen model.seed
+            in
+                { model
+                    | seed = seed_
+                    , forest =
+                        model.forest
+                            |> updateElement index (PTree.kick (V3.vec3 1 -1 0))
+                }
+                    ! []
+
         SpeechMsg msg ->
             let
-                ( newSpeechModel, speechCmd ) =
+                ( newSpeechModel, speechCmd, speechEvent ) =
                     Speech.update msg model.speechModel
+
+                newModel =
+                    { model | speechModel = newSpeechModel }
+
+                ( newModel2, newMsg ) =
+                    case speechEvent of
+                        Just (Speech.SentenceAdded) ->
+                            update KickTree newModel
+
+                        _ ->
+                            newModel ! []
             in
-                ( { model | speechModel = newSpeechModel }, Cmd.map SpeechMsg speechCmd )
+                ( newModel2
+                , Cmd.batch [ Cmd.map SpeechMsg speechCmd, newMsg ]
+                )
 
         DragMsg msg ->
             let
@@ -142,6 +175,18 @@ update action model =
                     Drag.update Drag msg model.dragModel
             in
                 ( { model | dragModel = newDragModel }, dragCmd )
+
+
+updateElement : Int -> (a -> a) -> List a -> List a
+updateElement index f list =
+    let
+        apply i x =
+            if i == index then
+                f x
+            else
+                x
+    in
+        List.indexedMap apply list
 
 
 subscriptions : Model -> Sub Action

@@ -8,12 +8,16 @@ import Html exposing (div, text, ul)
 
 main : Program Never Model Msg
 main =
-    Html.program
-        { init = init CFG.exampleCFG
-        , update = update
-        , view = view
-        , subscriptions = subscriptions
-        }
+    let
+        realUpdate a b =
+            update a b |> (\( a, b, c ) -> ( a, b ))
+    in
+        Html.program
+            { init = init CFG.exampleCFG
+            , update = realUpdate
+            , view = view
+            , subscriptions = subscriptions
+            }
 
 
 type alias Model =
@@ -31,6 +35,10 @@ type Msg
     | DeleteWord
 
 
+type Event
+    = SentenceAdded
+
+
 init : CFG.Grammar -> ( Model, Cmd Msg )
 init grammar =
     { grammar = CFG.exampleCFG
@@ -46,7 +54,7 @@ initWriter grammar =
     TP.init (CFG.choices grammar CFG.S []) |> Tuple.first
 
 
-update : Msg -> Model -> ( Model, Cmd Msg )
+update : Msg -> Model -> ( Model, Cmd Msg, Maybe Event )
 update msg model =
     case msg of
         UpdateWriter msg ->
@@ -78,7 +86,7 @@ update msg model =
                 then
                     update DeleteWord newModel
                 else
-                    { model | writer = newWriter } ! []
+                    ( { model | writer = newWriter }, Cmd.none, Nothing )
 
         DeleteWord ->
             let
@@ -102,7 +110,7 @@ update msg model =
                         , writer = { writer | choices = newChoices, input = "" }
                     }
             in
-                newModel ! []
+                ( newModel, Cmd.none, Nothing )
 
         AddWord word ->
             let
@@ -111,9 +119,6 @@ update msg model =
 
                 writer =
                     model.writer
-
-                a =
-                    Debug.log "choices" choices
 
                 -- choices based on updated phrase
                 choices =
@@ -125,22 +130,26 @@ update msg model =
                 if List.isEmpty choices then
                     update (AddSentence newModel.phrase) newModel
                 else
-                    { newModel
+                    ( { newModel
                         | writer =
                             { writer
                                 | choices = choices
                                 , input = ""
                             }
-                    }
-                        ! []
+                      }
+                    , Cmd.none
+                    , Nothing
+                    )
 
         AddSentence sentence ->
-            { model
+            ( { model
                 | writer = initWriter model.grammar
                 , history = model.history ++ [ sentence ]
                 , phrase = []
-            }
-                ! []
+              }
+            , Cmd.none
+            , Just SentenceAdded
+            )
 
 
 view : Model -> Html.Html Msg
