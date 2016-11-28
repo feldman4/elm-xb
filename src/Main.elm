@@ -11,13 +11,15 @@ import Math.Matrix4 as M4
 import Task exposing (Task)
 import Time exposing (..)
 import WebGL exposing (..)
-import Html exposing (Html, text, div)
+import Html exposing (Html, text, div, br)
 import Html
 import Html.Attributes exposing (width, height, style)
 import AnimationFrame
 import Window
 import PTree
 import Drag
+import Typewriter.Typewriter as Speech
+import CFG
 
 
 -- MODEL
@@ -29,6 +31,7 @@ type alias Model =
     , person : Person
     , dragModel : Drag.Model
     , forest : List (PTree.TreeBase PTree.SpringyQuad)
+    , speechModel : Speech.Model
     }
 
 
@@ -36,7 +39,6 @@ type alias Person =
     { position : Vec3
     , velocity : Vec3
     , gaze : Vec3
-    , crouch : Bool
     }
 
 
@@ -45,7 +47,7 @@ type alias Keys =
     , right : Bool
     , up : Bool
     , down : Bool
-    , space : Bool
+    , shift : Bool
     , z : Bool
     }
 
@@ -56,6 +58,7 @@ type Action
     | Resize Window.Size
     | DragMsg Drag.Msg
     | Drag ( Int, Int )
+    | SpeechMsg Speech.Msg
 
 
 eyeLevel : Float
@@ -70,10 +73,9 @@ gazeSpeed =
 
 defaultPerson : Person
 defaultPerson =
-    { position = vec3 0 eyeLevel -10
+    { position = vec3 0 eyeLevel -15
     , velocity = vec3 0 0 0
     , gaze = k
-    , crouch = False
     }
 
 
@@ -87,6 +89,7 @@ init =
       , keys = Keys False False False False False False
       , size = Window.Size 0 0
       , dragModel = Drag.initialModel
+      , speechModel = Speech.init CFG.exampleCFG |> Tuple.first
       , forest = PTree.exampleSpringyForest
       }
     , Cmd.batch
@@ -104,35 +107,12 @@ update action model =
         Resize size ->
             ( { model | size = size }, Cmd.none )
 
-        DragMsg msg ->
-            let
-                ( newDragModel, dragCmd ) =
-                    Drag.update Drag msg model.dragModel
-            in
-                ( { model | dragModel = newDragModel }, dragCmd )
-
-        Drag ( x, y ) ->
-            let
-                direction =
-                    { dx = toFloat x * -1 * gazeSpeed
-                    , dy = toFloat y * -1 * gazeSpeed
-                    }
-
-                person =
-                    model.person
-
-                newPerson =
-                    { person | gaze = turn direction person.gaze }
-            in
-                { model | person = newPerson } ! []
-
         Animate dt ->
             ( { model
                 | person =
                     model.person
                         |> walk (directions model.keys)
-                        |> jump model.keys.space
-                        |> crouch model.keys.z
+                        |> jump model.keys.shift
                         |> gravity (dt / 500)
                         |> physics (dt / 500)
                 , forest =
@@ -140,6 +120,28 @@ update action model =
               }
             , Cmd.none
             )
+
+        Drag ( x, y ) ->
+            { model
+                | person =
+                    model.person
+                        |> turn { dx = toFloat x * -gazeSpeed, dy = toFloat y * -gazeSpeed }
+            }
+                ! []
+
+        SpeechMsg msg ->
+            let
+                ( newSpeechModel, speechCmd ) =
+                    Speech.update msg model.speechModel
+            in
+                ( { model | speechModel = newSpeechModel }, Cmd.map SpeechMsg speechCmd )
+
+        DragMsg msg ->
+            let
+                ( newDragModel, dragCmd ) =
+                    Drag.update Drag msg model.dragModel
+            in
+                ( { model | dragModel = newDragModel }, dragCmd )
 
 
 subscriptions : Model -> Sub Action
@@ -149,6 +151,7 @@ subscriptions model =
     , Keyboard.ups (keyChange False)
     , Window.resizes Resize
     , Drag.subscriptions DragMsg model.dragModel
+    , Sub.map SpeechMsg (Speech.subscriptions model.speechModel)
     ]
         |> Sub.batch
 
@@ -156,8 +159,8 @@ subscriptions model =
 keyChange : Bool -> Keyboard.KeyCode -> Action
 keyChange on keyCode =
     (case keyCode of
-        32 ->
-            \k -> { k | space = on }
+        16 ->
+            \k -> { k | shift = on }
 
         37 ->
             \k -> { k | left = on }
@@ -213,16 +216,19 @@ directions { left, right, up, down } =
 {- uses y is up convention (V3.j) -}
 
 
-turn : { dx : Float, dy : Float } -> Vec3 -> Vec3
-turn { dx, dy } gaze =
+turn : { dx : Float, dy : Float } -> Person -> Person
+turn { dx, dy } person =
     let
+        gaze =
+            person.gaze
+
         sideways =
             V3.cross gaze j |> V3.normalize
 
         r =
             makeRotate dx V3.j |> M4.rotate dy sideways
     in
-        transform r gaze |> V3.normalize
+        { person | gaze = transform r gaze |> V3.normalize }
 
 
 walk : { x : Int, y : Int } -> Person -> Person
@@ -298,14 +304,6 @@ gravity dt person =
             }
 
 
-crouch : Bool -> Person -> Person
-crouch on person =
-    if on then
-        { person | crouch = True }
-    else
-        { person | crouch = False }
-
-
 
 -- VIEW
 
@@ -317,27 +315,20 @@ perspective ( w, h ) person =
 
 
 view : Model -> Html Action
-view { size, person, forest } =
+view { size, person, forest, speechModel } =
     let
-        newPosition =
-            case person.crouch of
-                True ->
-                    V3.setY (V3.getY person.position - 1) person.position
-
-                False ->
-                    person.position
-
-        newPerson =
-            { person | position = newPosition }
-
         perspectiveMatrix =
-            perspective ( size.width, size.height ) newPerson
+            perspective ( size.width, size.height ) person
 
         noSpringForest =
             List.map PTree.despring forest
 
         entities =
             PTree.worldForest noSpringForest perspectiveMatrix
+
+        messageText =
+            List.map text message
+                |> List.intersperse (br [] [])
     in
         div
             [ style
@@ -362,15 +353,50 @@ view { size, person, forest } =
                     , ( "top", "20px" )
                     ]
                 ]
-                [ text message ]
+                messageText
+            , viewSpeech speechModel
             ]
 
 
-message : String
+viewSpeech : Speech.Model -> Html Action
+viewSpeech model =
+    let
+        suggestions =
+            model.writer.choices
+
+        input =
+            model.writer.input
+
+        phrase =
+            model.phrase
+
+        topText =
+            String.join " " (phrase ++ [ input ])
+
+        bottomText =
+            String.join ", " suggestions
+    in
+        div
+            [ style
+                [ ( "position", "absolute" )
+                , ( "font-family", "monospace" )
+                , ( "text-align", "center" )
+                , ( "left", "20px" )
+                , ( "right", "20px" )
+                , ( "bottom", "20px" )
+                ]
+            ]
+            [ div [] [ text topText ], div [] [ text bottomText ] ]
+
+
+message : List String
 message =
-    "Walk around with a first person perspective.\n"
-        ++ "Arrows keys to move, space bar to jump, Z to crouch.\n"
-        ++ "Click and drag mouse to look."
+    [ "Walk around with a first person perspective.\n"
+        ++ "Arrows keys to move, shift to jump.\n"
+        ++ "Click and drag mouse to look.\n"
+    , "Type and hit space bar to complete insults.\n"
+        ++ "Backspace deletes letters and words."
+    ]
 
 
 

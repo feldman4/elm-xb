@@ -1,4 +1,4 @@
-module TypewriterPure
+module Typewriter.Base
     exposing
         ( Model
         , Msg(..)
@@ -17,7 +17,6 @@ import Html
 import String
 import Keyboard
 import Char
-import Debug
 
 
 main : Program Never Model Msg
@@ -76,26 +75,30 @@ update msg model =
     case msg of
         KeyPress key ->
             let
-                a =
-                    Debug.log "input" ( (Char.fromCode key |> String.fromChar), key == keycode.space, model.input )
-
                 newInput =
-                    if key == keycode.backspace then
-                        if model.lastKey == keycode.backspace then
-                            ""
-                        else
-                            String.slice 0 -1 model.input
-                    else if key == keycode.dash then
-                        model.input ++ "-"
-                    else if (isKeyLetter key) || (key == keycode.space) then
-                        model.input ++ (Char.fromCode key |> String.fromChar)
-                    else
-                        model.input
+                    parseInput model key
             in
+                -- only update input buffer if it's a valid prefix
                 if validate model.choices newInput then
                     ( { model | input = newInput, lastKey = key }, Cmd.none )
                 else
                     ( { model | lastKey = key }, Cmd.none )
+
+
+parseInput : Model -> Char.KeyCode -> String
+parseInput model key =
+    -- recognizes backspace, space, and alphanumeric plus dash
+    if key == keycode.backspace then
+        if model.lastKey == keycode.backspace then
+            ""
+        else
+            String.slice 0 -1 model.input
+    else if key == keycode.dash then
+        model.input ++ "-"
+    else if (isKeyLetter key) || (key == keycode.space) then
+        model.input ++ (Char.fromCode key |> String.fromChar)
+    else
+        model.input
 
 
 startsWith : String -> String -> Bool

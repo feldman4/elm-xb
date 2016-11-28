@@ -1,6 +1,6 @@
-module CFG_demo exposing (..)
+module Typewriter.Typewriter exposing (..)
 
-import TypewriterPure as TP
+import Typewriter.Base as TP
 import CFG
 import Html
 import Html exposing (div, text, ul)
@@ -9,7 +9,7 @@ import Html exposing (div, text, ul)
 main : Program Never Model Msg
 main =
     Html.program
-        { init = init
+        { init = init CFG.exampleCFG
         , update = update
         , view = view
         , subscriptions = subscriptions
@@ -31,18 +31,14 @@ type Msg
     | DeleteWord
 
 
-init : ( Model, Cmd Msg )
-init =
-    let
-        grammar =
-            CFG.exampleCFG
-    in
-        { grammar = CFG.exampleCFG
-        , writer = initWriter grammar
-        , history = [ [] ]
-        , phrase = []
-        }
-            ! []
+init : CFG.Grammar -> ( Model, Cmd Msg )
+init grammar =
+    { grammar = CFG.exampleCFG
+    , writer = initWriter grammar
+    , history = [ [] ]
+    , phrase = []
+    }
+        ! []
 
 
 initWriter : CFG.Grammar -> TP.Model
