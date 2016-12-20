@@ -10,6 +10,39 @@ import Time exposing (Time)
 import Spring exposing (Spring, animate, epsilon)
 
 
+type alias TreeBase q =
+    { quad : q
+    , origin : Vec3
+    }
+
+
+type alias Vertex =
+    { position : Vec3
+    , coord : Vec3
+    }
+
+
+type alias Face =
+    List ( Vertex, Vertex, Vertex )
+
+
+type alias Quad =
+    ( Vec3, Vec3, Vec3, Vec3 )
+
+
+type alias SpringyQuad =
+    ( Spring.Spring Vec3, Spring.Spring Vec3, Spring.Spring Vec3, Spring.Spring Vec3 )
+
+
+type alias Spring a =
+    { stiffness : Float
+    , damping : Float
+    , position : a
+    , velocity : a
+    , destination : a
+    }
+
+
 worldTree : Quad -> Vec3 -> Mat4 -> List Renderable
 worldTree quad origin perspective =
     let
@@ -118,7 +151,7 @@ animateVec3 fpms spring =
 
 
 
--- ANIMATION
+-- VIEW (?)
 
 
 toList : ( a, a ) -> List a
@@ -164,34 +197,7 @@ branchTransform fLeft fRight soFar =
 
 
 
--- Define the mesh for a crate
-
-
-type alias Vertex =
-    { position : Vec3
-    , coord : Vec3
-    }
-
-
-type alias Face =
-    List ( Vertex, Vertex, Vertex )
-
-
-type alias Quad =
-    ( Vec3, Vec3, Vec3, Vec3 )
-
-
-type alias SpringyQuad =
-    ( Spring.Spring Vec3, Spring.Spring Vec3, Spring.Spring Vec3, Spring.Spring Vec3 )
-
-
-type alias Spring a =
-    { stiffness : Float
-    , damping : Float
-    , position : a
-    , velocity : a
-    , destination : a
-    }
+-- HELPERS
 
 
 quadToSQuad : Quad -> SpringyQuad
@@ -220,12 +226,6 @@ despring base =
     }
 
 
-type alias TreeBase q =
-    { quad : q
-    , origin : Vec3
-    }
-
-
 eachQuad : (a -> a) -> ( a, a, a, a ) -> ( a, a, a, a )
 eachQuad f q =
     let
@@ -245,7 +245,7 @@ mapQuad f ( a, b, c, d ) q =
 
 
 
--- example input quad
+-- EXAMPLES
 
 
 exampleTreeBase : Quad
@@ -266,7 +266,7 @@ exampleForest : List (TreeBase Quad)
 exampleForest =
     let
         numTrees =
-            20
+            5
 
         seed0 =
             Random.initialSeed 22783283
@@ -411,8 +411,31 @@ quadFace depth quad =
         ]
 
 
+{-| Not sure what this is for.
+-}
+rotateFace : ( Float, Float, Float ) -> Face -> Face
+rotateFace ( angleYZ, angleXZ, angleXY ) face =
+    let
+        iRot =
+            makeRotate (degrees angleYZ) i
 
--- Shaders
+        jRot =
+            makeRotate (degrees angleXZ) j
+
+        kRot =
+            makeRotate (degrees angleXY) k
+
+        t =
+            mul (mul iRot jRot) kRot
+
+        each f ( a, b, c ) =
+            ( f a, f b, f c )
+    in
+        List.map (each (\v -> { v | position = transform t v.position })) face
+
+
+
+-- SHADERS
 -- vertexShader magically knows attributes (Vertex) must have one field for each
 -- attribute in the GLSL shader code
 -- variables

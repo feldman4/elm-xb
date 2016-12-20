@@ -21,6 +21,18 @@ import Drag
 import Typewriter.Typewriter as Speech
 import CFG
 import Random.Pcg as Random
+import Interaction exposing (Interaction)
+
+
+main : Program Never Model Action
+main =
+    Html.program
+        { init = init
+        , view = view
+        , subscriptions = subscriptions
+        , update = update
+        }
+
 
 
 -- MODEL
@@ -50,7 +62,6 @@ type alias Keys =
     , up : Bool
     , down : Bool
     , shift : Bool
-    , z : Bool
     }
 
 
@@ -61,7 +72,7 @@ type Action
     | DragMsg Drag.Msg
     | Drag ( Int, Int )
     | SpeechMsg Speech.Msg
-    | KickTree
+    | Interact Interaction.Interaction
 
 
 eyeLevel : Float
@@ -83,13 +94,13 @@ defaultPerson =
 
 
 
--- INIT AND UPDATE
+-- INIT
 
 
 init : ( Model, Cmd Action )
 init =
     ( { person = defaultPerson
-      , keys = Keys False False False False False False
+      , keys = Keys False False False False False
       , size = Window.Size 0 0
       , dragModel = Drag.initialModel
       , speechModel = Speech.init CFG.exampleCFG |> Tuple.first
@@ -102,28 +113,34 @@ init =
     )
 
 
+
+-- UPDATE
+
+
 update : Action -> Model -> ( Model, Cmd Action )
 update action model =
     case action of
         KeyChange msg ->
-            ( { model | keys = updateKeys msg model.keys }, Cmd.none )
+            { model | keys = updateKeys msg model.keys } ! []
 
         Resize size ->
-            ( { model | size = size }, Cmd.none )
+            { model | size = size } ! []
 
         Animate dt ->
-            ( { model
+            { model
                 | person =
                     model.person
-                        |> walk (directions model.keys)
-                        |> jump model.keys.shift
+                        |> move (directions model.keys)
                         |> gravity (dt / 500)
                         |> physics (dt / 500)
                 , forest =
                     PTree.animateForest dt model.forest
-              }
-            , Cmd.none
-            )
+            }
+                ! []
+
+        Interact it ->
+            (model ! [])
+                |> Interaction.speechToTree it
 
         Drag ( x, y ) ->
             { model
@@ -133,41 +150,8 @@ update action model =
             }
                 ! []
 
-        KickTree ->
-            let
-                gen =
-                    Random.int 0 (List.length model.forest)
-
-                ( index, seed_ ) =
-                    Random.step gen model.seed
-            in
-                { model
-                    | seed = seed_
-                    , forest =
-                        model.forest
-                            |> updateElement index (PTree.kick (V3.vec3 1 -1 0))
-                }
-                    ! []
-
         SpeechMsg msg ->
-            let
-                ( newSpeechModel, speechCmd, speechEvent ) =
-                    Speech.update msg model.speechModel
-
-                newModel =
-                    { model | speechModel = newSpeechModel }
-
-                ( newModel2, newMsg ) =
-                    case speechEvent of
-                        Just (Speech.SentenceAdded) ->
-                            update KickTree newModel
-
-                        _ ->
-                            newModel ! []
-            in
-                ( newModel2
-                , Cmd.batch [ Cmd.map SpeechMsg speechCmd, newMsg ]
-                )
+            updateSpeech msg model
 
         DragMsg msg ->
             let
@@ -177,16 +161,28 @@ update action model =
                 ( { model | dragModel = newDragModel }, dragCmd )
 
 
-updateElement : Int -> (a -> a) -> List a -> List a
-updateElement index f list =
+updateSpeech : Speech.Msg -> Model -> ( Model, Cmd Action )
+updateSpeech msg model =
     let
-        apply i x =
-            if i == index then
-                f x
-            else
-                x
+        ( newSpeechModel, speechCmd, speechEvent ) =
+            Speech.update msg model.speechModel
+
+        newModel =
+            { model | speechModel = newSpeechModel }
+
+        ( newModel2, interactCmd ) =
+            update (Interact (Interaction.SpeechEvent speechEvent)) newModel
     in
-        List.indexedMap apply list
+        ( newModel2
+        , Cmd.batch
+            [ Cmd.map SpeechMsg speechCmd
+            , interactCmd
+            ]
+        )
+
+
+
+-- OTHER
 
 
 subscriptions : Model -> Sub Action
@@ -224,25 +220,12 @@ updateKeys ( on, keyCode ) k =
         40 ->
             { k | down = on }
 
-        90 ->
-            { k | z = on }
-
         _ ->
             k
 
 
-main : Program Never Model Action
-main =
-    Html.program
-        { init = init
-        , view = view
-        , subscriptions = subscriptions
-        , update = update
-        }
-
-
-directions : Keys -> { x : Int, y : Int }
-directions { left, right, up, down } =
+directions : Keys -> { x : Int, y : Int, z : Int }
+directions { left, right, up, down, shift } =
     let
         direction a b =
             case ( a, b ) of
@@ -254,14 +237,17 @@ directions { left, right, up, down } =
 
                 _ ->
                     0
+
+        directionUp =
+            if shift then
+                1
+            else
+                0
     in
         { x = direction left right
         , y = direction down up
+        , z = directionUp
         }
-
-
-
-{- uses y is up convention (V3.j) -}
 
 
 turn : { dx : Float, dy : Float } -> Person -> Person
@@ -279,8 +265,8 @@ turn { dx, dy } person =
         { person | gaze = transform r gaze |> V3.normalize }
 
 
-walk : { x : Int, y : Int } -> Person -> Person
-walk directions person =
+move : { x : Int, y : Int, z : Int } -> Person -> Person
+move directions person =
     if getY person.position > eyeLevel then
         person
     else
@@ -304,11 +290,12 @@ walk directions person =
             { person
                 | velocity = vec3 (getX dWorld) (getY person.velocity) (getZ dWorld)
             }
+                |> jump directions.z
 
 
-jump : Bool -> Person -> Person
-jump isJumping person =
-    if not isJumping || getY person.position > eyeLevel then
+jump : Int -> Person -> Person
+jump y person =
+    if (y == 0) || getY person.position > eyeLevel then
         person
     else
         let
@@ -406,7 +393,7 @@ view { size, person, forest, speechModel } =
             ]
 
 
-viewSpeech : Speech.Model -> Html Action
+viewSpeech : Speech.Model -> Html a
 viewSpeech model =
     let
         suggestions =
@@ -449,34 +436,3 @@ message =
 
 
 -- mesh
-
-
-type alias Vertex =
-    { position : Vec3
-    , coord : Vec3
-    }
-
-
-type alias Face =
-    List ( Vertex, Vertex, Vertex )
-
-
-rotateFace : ( Float, Float, Float ) -> Face -> Face
-rotateFace ( angleYZ, angleXZ, angleXY ) face =
-    let
-        iRot =
-            makeRotate (degrees angleYZ) i
-
-        jRot =
-            makeRotate (degrees angleXZ) j
-
-        kRot =
-            makeRotate (degrees angleXY) k
-
-        t =
-            mul (mul iRot jRot) kRot
-
-        each f ( a, b, c ) =
-            ( f a, f b, f c )
-    in
-        List.map (each (\v -> { v | position = transform t v.position })) face
