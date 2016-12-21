@@ -3,18 +3,103 @@ module Island.Geometry exposing (..)
 import Math.Vector4 exposing (vec4, Vec4)
 import Math.Vector3 exposing (vec3, Vec3)
 import Math.Vector3 as V3
-import Math.Matrix4 as M4 exposing (Mat4)
 import Island.Types exposing (..)
-import Meshes exposing (icosphere, subdivide)
+import List.Extra
+import Dict
+import Dict.Extra exposing (groupBy)
+
+
+map3 : (a -> b) -> ( a, a, a ) -> ( b, b, b )
+map3 f ( a, b, c ) =
+    ( f a, f b, f c )
+
+
+map3L : (a -> b) -> ( a, a, a ) -> List b
+map3L f ( a, b, c ) =
+    [ f a, f b, f c ]
 
 
 eachMeshPoint : (Vec3 -> Vec3) -> Mesh -> Mesh
 eachMeshPoint f mesh =
+    mesh |> List.map (map3 f)
+
+
+addPQ : a -> PQ { mesh : a }
+addPQ mesh =
+    { mesh = mesh, position = vec3 0 0 0, quaternion = vec4 0 0 0 0 }
+
+
+indexMesh : Mesh -> IndexedMesh
+indexMesh mesh =
     let
-        map3 f ( a, b, c ) =
-            ( f a, f b, f c )
+        dict =
+            mesh
+                |> List.concatMap (\( a, b, c ) -> [ a, b, c ])
+                |> List.Extra.uniqueBy toString
+                |> List.indexedMap (\a b -> ( toString b, a ))
+                |> Dict.fromList
+
+        -- turn (Vec3,)*3 into (IndexedPoint,)*3
+        getter v =
+            { index = Dict.get (toString v) dict |> Maybe.withDefault -1
+            , point = v
+            , normal = vec3 0 0 0
+            , neighbors = []
+            }
+
+        setter ( a, b, c ) =
+            let
+                normal =
+                    toNormal ( a.point, b.point, c.point )
+            in
+                ( { a | normal = normal, neighbors = a.neighbors ++ [ ( b.index, a.index, c.index ) ] }
+                , { b | normal = normal, neighbors = a.neighbors ++ [ ( c.index, b.index, a.index ) ] }
+                , { c | normal = normal, neighbors = a.neighbors ++ [ ( a.index, c.index, b.index ) ] }
+                )
     in
-        mesh |> List.map (map3 f)
+        mesh
+            |> List.map (map3 getter)
+            |> List.map setter
+
+
+{-| Surface normal, normalized. Points are in counter-clockwise orientation when facing
+the normal.
+-}
+toNormal : ( Vec3, Vec3, Vec3 ) -> Vec3
+toNormal ( a, b, c ) =
+    V3.cross (V3.sub c b) (V3.sub a b) |> V3.normalize
+
+
+{-| Calculate average of all normals at each vertex. This kind of
+assumes that we use triangles to represent smooth surfaces, not sharp corners.
+-}
+useCornerNormals : IndexedMesh -> IndexedMesh
+useCornerNormals mesh =
+    let
+        f ( a, b, c ) =
+            [ { index = a.index, normal = toNormal ( b.point, a.point, c.point ) }
+            , { index = b.index, normal = toNormal ( c.point, b.point, a.point ) }
+            , { index = c.index, normal = toNormal ( a.point, c.point, b.point ) }
+            ]
+
+        normSum vectors =
+            let
+                n =
+                    List.length vectors |> toFloat
+            in
+                vectors |> List.foldl V3.add (vec3 0 0 0) |> V3.scale (1 / n)
+
+        normDict =
+            mesh
+                |> List.concatMap f
+                |> groupBy .index
+                |> Dict.map (\_ a -> List.map .normal a |> normSum)
+
+        setter a =
+            { a | normal = Dict.get a.index normDict |> Maybe.withDefault a.normal }
+    in
+        mesh
+            |> List.map (map3 setter)
 
 
 invertNormals : Mesh -> Mesh
@@ -22,9 +107,9 @@ invertNormals mesh =
     mesh |> List.map (\( a, b, c ) -> ( a, c, b ))
 
 
-addPQ : Mesh -> MeshPQ
-addPQ mesh =
-    { mesh = mesh, position = vec3 0 0 0, quaternion = vec4 0 0 0 0 }
+invertIndexedNormals : IndexedMesh -> IndexedMesh
+invertIndexedNormals mesh =
+    mesh |> List.map (map3 (\a -> { a | normal = V3.scale -1 a.normal }))
 
 
 offset : Mesh -> Vec3 -> Mesh
@@ -59,10 +144,11 @@ quadToTri quad =
         ( a, b, c, d ) =
             quad
     in
-        -- [ ( a, b, c ), ( b, c, d ) ]
         [ ( a, b, c ), ( a, c, d ) ]
 
 
+{-| Make a rectangular grid with integer spacing.
+-}
 makeGrid : Int -> Int -> List Quad
 makeGrid height width =
     let
@@ -85,6 +171,18 @@ makeGrid height width =
         rows
             |> List.concatMap (\i -> List.map (\j -> ( i, j )) cols)
             |> List.map quad
+
+
+cube : Mesh
+cube =
+    List.concatMap quadToTri <|
+        [ ( vec3 -1.0 -1.0 -1.0, vec3 -1.0 -1.0 1.0, vec3 -1.0 1.0 1.0, vec3 -1.0 1.0 -1.0 )
+        , ( vec3 -1.0 1.0 -1.0, vec3 -1.0 1.0 1.0, vec3 1.0 1.0 1.0, vec3 1.0 1.0 -1.0 )
+        , ( vec3 1.0 1.0 -1.0, vec3 1.0 1.0 1.0, vec3 1.0 -1.0 1.0, vec3 1.0 -1.0 -1.0 )
+        , ( vec3 1.0 -1.0 -1.0, vec3 1.0 -1.0 1.0, vec3 -1.0 -1.0 1.0, vec3 -1.0 -1.0 -1.0 )
+        , ( vec3 -1.0 1.0 -1.0, vec3 1.0 1.0 -1.0, vec3 1.0 -1.0 -1.0, vec3 -1.0 -1.0 -1.0 )
+        , ( vec3 1.0 1.0 1.0, vec3 -1.0 1.0 1.0, vec3 -1.0 -1.0 1.0, vec3 1.0 -1.0 1.0 )
+        ]
 
 
 island : Mesh

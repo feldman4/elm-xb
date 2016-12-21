@@ -7,11 +7,15 @@ import Minimum
 
 
 type alias Mesh =
-    List Tri
+    List ( Vec3, Vec3, Vec3 )
 
 
-type alias Tri =
-    ( Vec3, Vec3, Vec3 )
+type alias IndexedPoint =
+    { index : Int, point : Vec3, normal : Vec3, neighbors : List ( Int, Int, Int ) }
+
+
+type alias IndexedMesh =
+    List ( IndexedPoint, IndexedPoint, IndexedPoint )
 
 
 type alias Quad =
@@ -39,8 +43,12 @@ type alias MeshPQ =
     PQ { mesh : Mesh }
 
 
+type alias IndexedMeshPQ =
+    PQ { mesh : IndexedMesh }
+
+
 type alias Modeled =
-    { boat : MeshPQ, island : MeshPQ, sea : MeshPQ }
+    { boat : IndexedMeshPQ, island : MeshPQ, sea : IndexedMeshPQ }
 
 
 type alias Model =

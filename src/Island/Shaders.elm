@@ -7,12 +7,27 @@ import WebGL exposing (render, Renderable, Shader)
 import Island.Types exposing (..)
 
 
+type alias Edged a =
+    { a | n1 : Vec3, n2 : Vec3, n3 : Vec3, n4 : Vec3, n5 : Vec3, n6 : Vec3 }
+
+
+type alias EdgedVertex =
+    Edged Vertex
+
+
 type alias Varyings =
-    { fColor : Vec3, intensity : Float, fNormal : Vec3 }
+    { phongI : Vec3
+    , phongL : Vec3
+    , phongN : Vec3
+    , phongV : Vec3
+    , sources :
+        Vec3
+        -- , fDistance : Float
+    }
 
 
 type alias Uniforms u =
-    { u | perspective : Mat4, light : Vec3 }
+    { u | perspective : Mat4, light : Vec3, viewer : Vec3 }
 
 
 colorVertexShader : Shader Vertex (Uniforms u) Varyings
@@ -26,31 +41,96 @@ attribute vec3 normal;
 
 uniform mat4 perspective;
 uniform vec3 light;
+uniform vec3 viewer;
 
-varying vec3 fColor;
-varying float intensity;
-varying vec3 fNormal;
+varying vec3 phongL;
+varying vec3 phongN;
+varying vec3 phongV;
+varying vec3 phongI;
+//varying float fDistance;
+varying vec3 sources[2];
 
 void main () {
   gl_Position = perspective * vec4(position, 1.0);
-  float lightcoeff = dot(normalize(light - position), normalize(normal));
-  float falloff = 1.0 / pow(length(light - position) / 10.0, 2.0);
-  intensity = lightcoeff * clamp(falloff, 0.0, 1.0);
-  fColor = color;
-  fNormal = normal;
+  phongL = normalize(light - position);
+  phongN = normalize(normal);
+  phongV = normalize(viewer - position);
+
+  phongI = color;
+  // fDistance = length(light - position);
+  sources[0] = light;
+  sources[1] = position;
 }
 
 |]
 
 
-colorFragmentShader : Shader {} (Uniforms u) Varyings
-colorFragmentShader =
+edgeVertexShader : Shader EdgedVertex (Uniforms u) Varyings
+edgeVertexShader =
     [glsl|
 
 precision mediump float;
-varying vec3 fColor;
-varying float intensity;
-varying vec3 fNormal;
+attribute vec3 position;
+attribute vec3 color;
+attribute vec3 n1;
+attribute vec3 n2;
+attribute vec3 n3;
+attribute vec3 n4;
+attribute vec3 n5;
+attribute vec3 n6;
+
+uniform mat4 perspective;
+uniform vec3 light;
+uniform vec3 viewer;
+
+varying vec3 phongL;
+varying vec3 phongN;
+varying vec3 phongV;
+varying vec3 phongI;
+//varying float fDistance;
+varying vec3 sources[2];
+
+// acceptable at faking diffuse lighting, quite poor for specular lighting
+vec3 estimateNormal(vec3 p, vec3 n1, vec3 n2, vec3 n3, vec3 n4, vec3 n5, vec3 n6) {
+  vec3 estimate = -0.3333 * (normalize(cross(p - n1, p - n2)) + normalize(cross(p - n3, p - n4)) + normalize(cross(p - n5, p - n6)));
+  return normalize(estimate);
+}
+
+
+void main () {
+  gl_Position = perspective * vec4(position, 1.0);
+  phongL = normalize(light - position);
+  phongN = estimateNormal(position,n1,n2,n3,n4,n5,n6);
+  phongV = normalize(viewer - position);
+
+  phongI = color;
+  // fDistance = length(light - position);
+  sources[0] = light;
+  sources[1] = position;
+}
+
+|]
+
+
+
+-- FRAGMENT
+
+
+colorFragmentShader : Shader {} (Uniforms u) Varyings
+colorFragmentShader =
+    [glsl|
+precision mediump float;
+
+uniform mat4 perspective;
+uniform vec3 light;
+uniform vec3 viewer;
+
+varying vec3 phongL;
+varying vec3 phongN;
+varying vec3 phongV;
+varying vec3 phongI;
+//varying float fDistance;
+varying vec3 sources[2];
 
 vec3 rgb2hsv(vec3 c)
 {
@@ -71,8 +151,31 @@ vec3 hsv2rgb(vec3 c) {
 }
 
 void main () {
-  vec3 hsvColor = rgb2hsv(fColor);
-  hsvColor[2] = floor(hsvColor[2] * intensity * 6.0) / 6.0;
+
+  float distance = length(sources[1] - sources[0]);
+  float dropoff = (1.0 / pow(distance, 2.0)) * 40.0;
+  dropoff = clamp(dropoff, 0.0, 1.0);
+
+  // these can be color-dependent
+  float kd = 0.5;
+  float ks = 0.5;
+
+  vec3 L = normalize(phongL);
+  vec3 N = normalize(phongN);
+  vec3 V = normalize(phongV);
+  vec3 R = normalize(2.0 * dot(L, N) * N - L);
+  // can raise dot(R,V) to power alpha to emulate size of source
+  float alpha = 40.0;
+  float dotRV = clamp(dot(R, V), 0.0, 1.0);
+  // normalizing specular but not diffuse makes the interpolation look right, for some reason
+  float intensity = kd * clamp(dot(phongL, phongN), 0.0, 1.0) + ks * pow(dotRV, alpha);
+
+  // can use different intensities for dot(L,N) and dot(R,V) terms
+  vec3 phongColor = phongI * intensity * dropoff;
+
+  vec3 hsvColor = rgb2hsv(phongColor);
+
+  // hsvColor[2] = floor(hsvColor[2] * 12.0) / 12.0;
   gl_FragColor = vec4(hsv2rgb(hsvColor), 1.0);
 }
 

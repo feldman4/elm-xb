@@ -4,13 +4,14 @@ import Html exposing (text, div, br)
 import Html.Attributes exposing (style, height, width)
 import Math.Vector3 exposing (vec3, Vec3)
 import Math.Vector3 as V3
-import Math.Matrix4 as M4 exposing (Mat4)
-import WebGL exposing (render, Renderable, Shader)
+import WebGL exposing (Renderable, Shader)
 import Minimum
 import Island.Types exposing (..)
 import Meshes exposing (icosphere, subdivide)
 import Island.Geometry exposing (..)
 import Island.Shaders exposing (..)
+import Dict
+import Dict.Extra exposing (groupBy)
 
 
 main : Program Never Model Action
@@ -70,20 +71,36 @@ subscriptions model =
 
 
 view : Model -> Html.Html Action
-view { window, person, boat, island, sea } =
+view model =
     let
-        perspectiveMatrix =
-            Minimum.perspective ( window.size.width, window.size.height ) person
+        boat =
+            model.boat
+
+        island =
+            model.island
+
+        sea =
+            model.sea
+
+        window =
+            model.window
+
+        render drawable =
+            renderDrawable drawable model colorVertexShader colorFragmentShader
+
+        renderEdged drawable =
+            renderDrawable drawable model edgeVertexShader colorFragmentShader
 
         entities =
-            [ renderMesh boat perspectiveMatrix
-            , renderMesh island perspectiveMatrix
-              -- , renderMesh sea perspectiveMatrix
-            , renderDrawable seaMesh perspectiveMatrix
+            [ render (boat.mesh |> indexedMeshToTriangle)
+            , render (island.mesh |> meshToTriangle)
+            , renderEdged seaMeshEdged
+              -- , renderDrawable (initCube |> indexedMeshToTriangle) model
+            , render (initLightCube |> indexedMeshToTriangle)
             ]
 
         message =
-            [ "Enjoy your stay", "on the island. dt: " ++ toString window.dt ]
+            [ "Enjoy your stay on the island.", "dt: " ++ toString window.dt ]
 
         messageText =
             List.map text message
@@ -136,38 +153,92 @@ meshToTriangle mesh =
         mesh |> List.map g |> WebGL.Triangle
 
 
-renderMesh : MeshPQ -> Mat4 -> Renderable
-renderMesh { mesh } perspective =
+indexedMeshToTriangle : IndexedMesh -> WebGL.Drawable Vertex
+indexedMeshToTriangle mesh =
     let
-        uniforms =
-            { perspective = perspective
-            , light = vec3 3 3 3
-            }
-
-        drawable =
-            meshToTriangle mesh
-    in
-        WebGL.render colorVertexShader colorFragmentShader drawable uniforms
-
-
-renderDrawable : WebGL.Drawable Vertex -> Mat4 -> Renderable
-renderDrawable drawable perspective =
-    let
-        uniforms =
-            { perspective = perspective
-            , light = vec3 3 3 3
+        toAttribute vertex =
+            { position = vertex.point
+            , normal = vertex.normal
+            , color = vec3 0 0.2 1
             }
     in
-        WebGL.render colorVertexShader colorFragmentShader drawable uniforms
+        mesh |> List.map (map3 toAttribute) |> WebGL.Triangle
+
+
+edgedMeshToTriangle : IndexedMesh -> WebGL.Drawable EdgedVertex
+edgedMeshToTriangle mesh =
+    let
+        dict =
+            mesh
+                |> List.concatMap (map3L identity)
+                |> groupBy .index
+
+        -- represents an empty
+        emptyVector =
+            vec3 0.11 0.11 0.11
+
+        getPoint i =
+            Dict.get i dict |> Maybe.andThen List.head |> Maybe.map .point |> Maybe.withDefault emptyVector
+
+        firstLast ( a, b, c ) =
+            [ a, c ]
+
+        flattenedNeighbors vertex =
+            Dict.get vertex.index dict
+                |> Maybe.withDefault []
+                |> List.concatMap (\v -> v.neighbors |> List.concatMap firstLast)
+                |> List.take 6
+                |> List.map getPoint
+
+        toAttribute vertex =
+            let
+                neighbors =
+                    flattenedNeighbors vertex
+
+                get i =
+                    neighbors |> List.drop (i - 1) |> List.head |> Maybe.withDefault emptyVector
+            in
+                { position = vertex.point
+                , normal = vertex.normal
+                , color = vec3 0 0.2 1
+                , n1 = get 1
+                , n2 = get 2
+                , n3 = get 3
+                , n4 = get 4
+                , n5 = get 5
+                , n6 = get 6
+                }
+    in
+        mesh |> List.map (map3 toAttribute) |> WebGL.Triangle
+
+
+lightSource : Vec3
+lightSource =
+    vec3 2.0 2.0 2
+
+
+renderDrawable : WebGL.Drawable v -> Minimum.Model a -> Shader v (Uniforms {}) varyings -> Shader {} (Uniforms {}) varyings -> Renderable
+renderDrawable drawable { window, person } vertexShader fragmentShader =
+    let
+        perspectiveMatrix =
+            Minimum.perspective ( window.size.width, window.size.height ) person
+
+        uniforms =
+            { perspective = perspectiveMatrix
+            , light = lightSource
+            , viewer = person.position
+            }
+    in
+        WebGL.render vertexShader fragmentShader drawable uniforms
 
 
 
 -- INIT
 
 
-initBoat : Mesh
+initBoat : IndexedMesh
 initBoat =
-    boat
+    boat |> indexMesh |> useCornerNormals |> invertIndexedNormals
 
 
 initSea : Mesh
@@ -182,23 +253,71 @@ initSea =
         offset sea x
 
 
-initSeaSphere : Mesh
+initSeaSphere : IndexedMesh
 initSeaSphere =
     let
         sea =
-            icosphere 2
+            icosphere 4
 
         x =
             centroid sea |> V3.scale -1
+
+        mesh =
+            offset sea x
+                |> eachMeshPoint (V3.scale 10)
+
+        z =
+            Debug.log "init" (List.head mesh)
+
+        indexedMesh =
+            mesh
+                |> indexMesh
+                |> useCornerNormals
+
+        zz =
+            Debug.log "init_i" (List.head indexedMesh)
     in
-        offset sea x |> invertNormals |> eachMeshPoint (V3.scale 10)
+        indexedMesh
 
 
-{-| Avoid repeating costly meshToTriangle. Not so good if
+initCube : IndexedMesh
+initCube =
+    let
+        x =
+            centroid cube |> V3.scale -1
+
+        mesh =
+            offset cube x
+                |> eachMeshPoint (V3.scale 3.1)
+                |> eachMeshPoint (V3.add (vec3 0 0 0))
+    in
+        mesh |> indexMesh |> invertIndexedNormals
+
+
+initLightCube : IndexedMesh
+initLightCube =
+    let
+        x =
+            centroid cube |> V3.scale -1
+
+        mesh =
+            offset cube x
+                |> eachMeshPoint (V3.scale 0.3)
+                |> eachMeshPoint (V3.add lightSource)
+    in
+        mesh |> indexMesh |> invertIndexedNormals
+
+
+{-| Avoid repeating costly meshToTriangle.
 -}
 seaMesh : WebGL.Drawable Vertex
 seaMesh =
-    initSeaSphere |> meshToTriangle
+    initSeaSphere |> indexedMeshToTriangle
+
+
+seaMeshEdged : WebGL.Drawable EdgedVertex
+seaMeshEdged =
+    initSeaSphere |> edgedMeshToTriangle
 
 
 initIsland : Mesh
