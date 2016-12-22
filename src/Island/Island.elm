@@ -4,14 +4,14 @@ import Html exposing (text, div, br)
 import Html.Attributes exposing (style, height, width)
 import Math.Vector3 exposing (vec3, Vec3)
 import Math.Vector3 as V3
-import WebGL exposing (Renderable, Shader)
+import WebGL exposing (Renderable, Shader, Texture, Error)
 import Minimum
 import Island.Types exposing (..)
 import Meshes exposing (icosphere, subdivide)
 import Island.Geometry exposing (..)
 import Island.Shaders exposing (..)
-import Dict
-import Dict.Extra exposing (groupBy)
+import Island.Render exposing (..)
+import Task
 
 
 main : Program Never Model Action
@@ -32,20 +32,47 @@ init =
 
         action =
             Cmd.map MinAction msg
+
+        textureAction ( texId, url ) =
+            WebGL.loadTexture url
+                |> Task.attempt
+                    (\result ->
+                        case result of
+                            Err err ->
+                                TextureError err
+
+                            Ok val ->
+                                TextureLoaded (texId val)
+                    )
+
+        textureActions =
+            List.map textureAction
+                [ ( Tex0, "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/woodCrate.jpg" )
+                , ( Tex1, "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/thwomp_face.jpg" )
+                ]
     in
         { boat = initBoat |> addPQ
         , island = initIsland |> addPQ
         , sea = [] |> addPQ
+        , gridSea = [] |> addPQ
         , person = model.person
         , keys = model.keys
         , window = model.window
         , dragModel = model.dragModel
+        , textures = { tex0 = Nothing, tex1 = Nothing }
         }
-            ! [ action ]
+            ! ([ action ] ++ textureActions)
 
 
 type Action
     = MinAction Minimum.Action
+    | TextureError Error
+    | TextureLoaded TextureID
+
+
+type TextureID
+    = Tex0 Texture
+    | Tex1 Texture
 
 
 update : Action -> Model -> ( Model, Cmd Action )
@@ -61,6 +88,24 @@ update action model =
                     [ Cmd.map MinAction minAction
                     ]
                 )
+
+        TextureError err ->
+            model ! []
+
+        TextureLoaded texture ->
+            let
+                oldTextures =
+                    model.textures
+
+                newTextures =
+                    case texture of
+                        Tex0 tex ->
+                            { oldTextures | tex0 = Just tex }
+
+                        Tex1 tex ->
+                            { oldTextures | tex1 = Just tex }
+            in
+                { model | textures = newTextures } ! []
 
 
 subscriptions : Model -> Sub Action
@@ -88,16 +133,37 @@ view model =
         render drawable =
             renderDrawable drawable model colorVertexShader colorFragmentShader
 
-        renderEdged drawable =
-            renderDrawable drawable model edgeVertexShader colorFragmentShader
+        unpack m =
+            Maybe.map2 (,) m.tex0 m.tex1
+
+        textureEntity =
+            case unpack model.textures of
+                Just ( tex0, tex1 ) ->
+                    [ renderTextured (face0 |> meshPQToTriangle) model tex0 textureVertexShader textureFragmentShader
+                    , renderTextured (face1 |> meshPQToTriangle) model tex1 textureVertexShader textureFragmentShader
+                    ]
+                        ++ [ renderDummyTextures ( tex0, tex1 ) ]
+
+                Nothing ->
+                    []
+
+        displacementEntity =
+            case unpack model.textures of
+                Just ( tex0, tex1 ) ->
+                    [ renderTextured gridSeaMeshEdged model tex0 oceanVertexShader textureFragmentShader ]
+
+                Nothing ->
+                    []
 
         entities =
-            [ render (boat.mesh |> indexedMeshToTriangle)
-            , render (island.mesh |> meshToTriangle)
-            , renderEdged seaMeshEdged
+            [ -- [ render (boat.mesh |> indexedMeshToTriangle)
+              -- , render (island.mesh |> meshToTriangle)
+              -- , renderTextured model seaMeshEdged edgeVertexShader colorFragmentShader
               -- , renderDrawable (initCube |> indexedMeshToTriangle) model
-            , render (initLightCube |> indexedMeshToTriangle)
+              render (initLightCube |> indexedMeshToTriangle)
             ]
+                ++ displacementEntity
+                ++ textureEntity
 
         message =
             [ "Enjoy your stay on the island.", "dt: " ++ toString window.dt ]
@@ -135,104 +201,6 @@ view model =
 
 
 -- FUNCTIONS
-
-
-meshToTriangle : Mesh -> WebGL.Drawable Vertex
-meshToTriangle mesh =
-    let
-        g ( a, b, c ) =
-            let
-                normal =
-                    V3.cross (V3.sub b a) (V3.sub c a)
-
-                att =
-                    { position = a, normal = normal, color = vec3 0 0.2 1 }
-            in
-                ( att, { att | position = b }, { att | position = c } )
-    in
-        mesh |> List.map g |> WebGL.Triangle
-
-
-indexedMeshToTriangle : IndexedMesh -> WebGL.Drawable Vertex
-indexedMeshToTriangle mesh =
-    let
-        toAttribute vertex =
-            { position = vertex.point
-            , normal = vertex.normal
-            , color = vec3 0 0.2 1
-            }
-    in
-        mesh |> List.map (map3 toAttribute) |> WebGL.Triangle
-
-
-edgedMeshToTriangle : IndexedMesh -> WebGL.Drawable EdgedVertex
-edgedMeshToTriangle mesh =
-    let
-        dict =
-            mesh
-                |> List.concatMap (map3L identity)
-                |> groupBy .index
-
-        -- represents an empty
-        emptyVector =
-            vec3 0.11 0.11 0.11
-
-        getPoint i =
-            Dict.get i dict |> Maybe.andThen List.head |> Maybe.map .point |> Maybe.withDefault emptyVector
-
-        firstLast ( a, b, c ) =
-            [ a, c ]
-
-        flattenedNeighbors vertex =
-            Dict.get vertex.index dict
-                |> Maybe.withDefault []
-                |> List.concatMap (\v -> v.neighbors |> List.concatMap firstLast)
-                |> List.take 6
-                |> List.map getPoint
-
-        toAttribute vertex =
-            let
-                neighbors =
-                    flattenedNeighbors vertex
-
-                get i =
-                    neighbors |> List.drop (i - 1) |> List.head |> Maybe.withDefault emptyVector
-            in
-                { position = vertex.point
-                , normal = vertex.normal
-                , color = vec3 0 0.2 1
-                , n1 = get 1
-                , n2 = get 2
-                , n3 = get 3
-                , n4 = get 4
-                , n5 = get 5
-                , n6 = get 6
-                }
-    in
-        mesh |> List.map (map3 toAttribute) |> WebGL.Triangle
-
-
-lightSource : Vec3
-lightSource =
-    vec3 2.0 2.0 2
-
-
-renderDrawable : WebGL.Drawable v -> Minimum.Model a -> Shader v (Uniforms {}) varyings -> Shader {} (Uniforms {}) varyings -> Renderable
-renderDrawable drawable { window, person } vertexShader fragmentShader =
-    let
-        perspectiveMatrix =
-            Minimum.perspective ( window.size.width, window.size.height ) person
-
-        uniforms =
-            { perspective = perspectiveMatrix
-            , light = lightSource
-            , viewer = person.position
-            }
-    in
-        WebGL.render vertexShader fragmentShader drawable uniforms
-
-
-
 -- INIT
 
 
@@ -245,7 +213,7 @@ initSea : Mesh
 initSea =
     let
         sea =
-            makeGrid 30 30 |> List.concatMap quadToTri
+            makeGrid 50 50 |> List.concatMap quadToTri
 
         x =
             centroid sea |> V3.scale -1
@@ -266,16 +234,10 @@ initSeaSphere =
             offset sea x
                 |> eachMeshPoint (V3.scale 10)
 
-        z =
-            Debug.log "init" (List.head mesh)
-
         indexedMesh =
             mesh
                 |> indexMesh
                 |> useCornerNormals
-
-        zz =
-            Debug.log "init_i" (List.head indexedMesh)
     in
         indexedMesh
 
@@ -318,6 +280,11 @@ seaMesh =
 seaMeshEdged : WebGL.Drawable EdgedVertex
 seaMeshEdged =
     initSeaSphere |> edgedMeshToTriangle
+
+
+gridSeaMeshEdged : WebGL.Drawable EdgedVertex
+gridSeaMeshEdged =
+    initSea |> eachMeshPoint (V3.scale 0.02) |> indexMesh |> edgedMeshToTriangle
 
 
 initIsland : Mesh

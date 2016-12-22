@@ -173,6 +173,21 @@ makeGrid height width =
             |> List.map quad
 
 
+face : Mesh
+face =
+    [ ( vec3 -1.0 -1.0 -1.0, vec3 -1.0 -1.0 1.0, vec3 -1.0 1.0 1.0, vec3 -1.0 1.0 -1.0 ) ] |> List.concatMap quadToTri
+
+
+face0 : MeshPQ
+face0 =
+    { mesh = face, position = vec3 3 -2 1, quaternion = vec4 0 0 0 1 }
+
+
+face1 : MeshPQ
+face1 =
+    { mesh = face, position = vec3 3 2 1, quaternion = vec4 0 0 0 1 }
+
+
 cube : Mesh
 cube =
     List.concatMap quadToTri <|
