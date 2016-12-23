@@ -1,0 +1,52 @@
+<html>
+
+        <head>
+                <meta charset="UTF-8">
+                <title>Title</title>
+                <style type="text/css">
+                    html, body {
+                        height: 100%;
+                        margin: 0;
+                    }
+
+                    #wrapper {
+                        min-height: 100%;
+                    }
+                </style>
+                <script  src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+        </head>
+
+        <body>
+                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #9A9A9A; font-family: &#39;Source Sans Pro&#39;;">
+                        <div style="font-size: 3em;">Building your project!</div>
+                        <img src="https://raw.githubusercontent.com/elm-lang/elm-reactor/master/assets/waiting.gif">
+                        <div style="font-size: 1em">With new projects, I need a bunch of extra time to download packages.</div>
+                </div>
+        </body>
+
+        <script type="text/javascript" src="build/Island.js"></script>
+        <script type="text/javascript" src="src/shared.js"> </script>
+        <script type="text/javascript" src="src/simulation.js"> </script>
+
+
+        <!-- Removes splash and starts elm app. -->
+        <script type="text/javascript">
+                while (document.body.firstChild) {
+                        document.body.removeChild(document.body.firstChild);
+                }
+                var app = Elm.Island.Island.fullscreen()
+                window.app = app;
+
+
+                setTimeout(function () {
+                  var canvas = $('canvas')[0];
+                  var simulator = new Simulator(canvas);
+
+                  window.setInterval(function(){
+                   simulator.render(0.02);
+                  }, 30);
+
+                }, 0);
+
+        </script>
+</html>
