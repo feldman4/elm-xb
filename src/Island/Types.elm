@@ -62,6 +62,8 @@ type alias Object =
     , material : Material
     , frame :
         Frame.Frame
+    , scale :
+        Vec3
         -- doesn't account for scaling, can just multiply Mat4
     }
 
@@ -125,7 +127,7 @@ type alias Varyings =
 type alias Uniforms u =
     { u
         | perspective : Mat4
-        , frame : Mat4
+        , transform : Mat4
         , light : Vec3
         , viewer : Vec3
     }

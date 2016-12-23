@@ -53,14 +53,22 @@ indexMesh mesh =
                 normal =
                     toNormal ( a.position, b.position, c.position )
             in
-                ( { a | normal = normal, neighbors = a.neighbors ++ [ ( b.index, a.index, c.index ) ] }
-                , { b | normal = normal, neighbors = a.neighbors ++ [ ( c.index, b.index, a.index ) ] }
-                , { c | normal = normal, neighbors = a.neighbors ++ [ ( a.index, c.index, b.index ) ] }
+                ( { a | normal = normal, neighbors = a.neighbors ++ [ ( c.index, a.index, b.index ) ] }
+                , { b | normal = normal, neighbors = a.neighbors ++ [ ( a.index, b.index, c.index ) ] }
+                , { c | normal = normal, neighbors = a.neighbors ++ [ ( b.index, c.index, a.index ) ] }
                 )
     in
         mesh
             |> List.map (map3 getter)
             |> List.map setter
+
+
+
+-- populateNeighbors : Mesh -> Mesh
+-- populateNeighbors mesh =
+--   let
+--     meshEmpty = mesh |> List.map (map3 (\v -> {v | neighbors = []}))
+--     dict =
 
 
 {-| Surface normal, normalized. Points are in counter-clockwise orientation when facing

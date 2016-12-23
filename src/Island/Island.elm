@@ -25,6 +25,13 @@ main =
 init : ( Model, Cmd Action )
 init =
     let
+        objects =
+            [ initOcean, face0, face1, initBoat, initSeaSphere, initLightCube ]
+
+        textureActions =
+            [ Crate, Thwomp, NormalMap, DisplacementMap ]
+                |> List.map textureAction
+
         ( model, msg ) =
             Minimum.init
 
@@ -43,12 +50,8 @@ init =
                             Ok val ->
                                 TextureLoaded ( name, val )
                     )
-
-        textureActions =
-            [ Crate, Thwomp, NormalMap, DisplacementMap ]
-                |> List.map textureAction
     in
-        { objects = [ initPlane, face0, face1, initBoat, initSeaSphere, initLightCube ]
+        { objects = objects
         , sea = [] |> addPQ
         , gridSea = [] |> addPQ
         , person = model.person

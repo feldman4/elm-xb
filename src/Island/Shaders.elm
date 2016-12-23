@@ -14,7 +14,7 @@ attribute vec3 normal;
 
 
 uniform mat4 perspective;
-uniform mat4 frame;
+uniform mat4 transform;
 uniform vec3 light;
 uniform vec3 viewer;
 uniform vec4 color;
@@ -26,13 +26,15 @@ varying vec3 phongI;
 varying vec3 sources[2];
 
 void main () {
-  gl_Position = perspective * frame * vec4(position, 1.0);
-  phongL = normalize(light - (frame * vec4(position, 1.0)).xyz);
-  phongN = normalize(normal);
-  phongV = normalize(viewer - position);
+  vec4 worldPosition = transform * vec4(position, 1.0);
+  vec4 worldNormal = transform * vec4(normal, 1.0);
+  gl_Position = perspective * worldPosition;
+  phongL = normalize(light - worldPosition.xyz);
+  phongN = normalize(worldNormal.xyz);
+  phongV = normalize(viewer - worldPosition.xyz);
   phongI = color.rgb;
   sources[0] = light;
-  sources[1] = position;
+  sources[1] = worldPosition.xyz;
 }
 
 |]
@@ -97,7 +99,7 @@ precision mediump float;
 attribute vec3 position;
 
 uniform mat4 perspective;
-uniform mat4 frame;
+uniform mat4 transform;
 uniform vec3 light;
 uniform vec3 viewer;
 uniform vec4 color;
@@ -115,16 +117,18 @@ void main () {
   // vec3 position = a_position + texture2D(u_displacementMap, a_coordinates).rgb * (u_geometrySize / u_size);
   vec3 displacedPosition = position;
   // WHICH COMPONENTS OF DISPLACEMENT TO USE?
-  displacedPosition.xyz = position.xyz + texture2D(displacement, position.xy / 10.0).xyz * 5.0;
-  displacedPosition.xy = displacedPosition.xy * 10.0;
+  displacedPosition.z = position.z + length(texture2D(displacement, position.xy ));
 
-  gl_Position = perspective * frame * vec4(displacedPosition, 1.0);
-  phongL = normalize(light - (frame * vec4(displacedPosition, 1.0)).xyz);
-  phongN = normalize(texture2D(normals, position.xy / 10.0).xyz);
-  phongV = normalize(viewer - displacedPosition);
+  vec4 worldPosition = transform * vec4(displacedPosition, 1.0);
+  vec4 worldNormal = transform * vec4(texture2D(normals, position.xy).xyz, 1.0);
+  worldNormal = worldNormal.xzyw; // WRONG, NEED TO FIGURE OUT
+  gl_Position = perspective * worldPosition;
+  phongL = normalize(light - worldPosition.xyz);
+  phongN = normalize(worldNormal.xyz);
+  phongV = normalize(viewer - worldPosition.xyz);
   phongI = color.rgb;
   sources[0] = light;
-  sources[1] = displacedPosition;
+  sources[1] = worldPosition.xyz;
 
 }
 
@@ -172,12 +176,12 @@ vec3 hsv2rgb(vec3 c) {
 void main () {
 
   float distance = length(sources[1] - sources[0]);
-  float dropoff = (1.0 / pow(distance, 1.0)) * 12.0;
-  dropoff = clamp(dropoff, 0.0, 1.0);
+  float dropoff = (1.0 / pow(distance, 1.0)) * 120.0;
+  dropoff = clamp(dropoff, 0.5, 0.6);
 
   // these can be color-dependent
   float kd = 1.0;
-  float ks = 0.5;
+  float ks = 0.0;
 
   vec3 L = normalize(phongL);
   vec3 N = normalize(phongN);
@@ -212,12 +216,12 @@ textureVertexShader =
 attribute vec3 position;
 attribute vec3 coords;
 uniform mat4 perspective;
-uniform mat4 frame;
+uniform mat4 transform;
 varying vec3 vcoord;
 
 
 void main () {
-  gl_Position = perspective * frame * vec4(position, 1.0);
+  gl_Position = perspective * transform * vec4(position, 1.0);
   vcoord = coords;
 }
 

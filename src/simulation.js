@@ -408,7 +408,7 @@ var Simulator = function (canvas) {
 
     var fullscreenVertexBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, fullscreenVertexBuffer);
-    // 4 corners, suitable for fragment-based rendering of FFT below
+    // 4 corners, suitable for fragment-based rendering of FFT and vector maps below
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0]), gl.STATIC_DRAW);
 
     var oceanData = [];
@@ -545,6 +545,10 @@ var Simulator = function (canvas) {
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         }
 
+        // copies the displacement map
+        gl.activeTexture(gl.TEXTURE0);
+        gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, 512, 512, 0);
+
         gl.bindFramebuffer(gl.FRAMEBUFFER, normalMapFramebuffer);
         gl.useProgram(normalMapProgram.program);
         if (changed) {
@@ -552,9 +556,16 @@ var Simulator = function (canvas) {
         }
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-        // gl.copyTexImage2D(target, level, internalformat, x, y, width, height, border);
-        gl.activeTexture(gl.TEXTURE0);
+        // copies the normal map
+        gl.activeTexture(gl.TEXTURE1);
         gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, 512, 512, 0);
+
+
+        // TYPICAL VALUE : [-0.018318725749850273, 0.9996408820152283, -0.019558798521757126, 1]
+        // var pixels = new Float32Array(2 * 2 * 4);
+        // gl.readPixels(200, 200, 2, 2, gl.RGBA, gl.FLOAT, pixels);
+        // console.log(pixels); // Uint8Array
+
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.enable(gl.DEPTH_TEST);
