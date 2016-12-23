@@ -1,67 +1,36 @@
 module Island.Shaders exposing (..)
 
-import Math.Vector3 exposing (vec3, Vec3)
-import Math.Vector3 as V3
-import Math.Matrix4 as M4 exposing (Mat4)
 import WebGL exposing (render, Renderable, Shader, Texture)
 import Island.Types exposing (..)
 
 
-type alias Edged a =
-    { a | n1 : Vec3, n2 : Vec3, n3 : Vec3, n4 : Vec3, n5 : Vec3, n6 : Vec3 }
-
-
-type alias EdgedVertex =
-    Edged Vertex
-
-
-type alias Varyings =
-    { phongI : Vec3
-    , phongL : Vec3
-    , phongN : Vec3
-    , phongV : Vec3
-    , sources :
-        Vec3
-        -- , fDistance : Float
-    }
-
-
-type alias Uniforms u =
-    { u | perspective : Mat4, light : Vec3, viewer : Vec3 }
-
-
-type alias TextureUniforms u =
-    { u | tex0 : Texture, tex1 : Texture }
-
-
-colorVertexShader : Shader Vertex (Uniforms u) Varyings
+colorVertexShader : Shader Attribute (UniformColor (Uniforms u)) Varyings
 colorVertexShader =
     [glsl|
 
 precision mediump float;
 attribute vec3 position;
-attribute vec3 color;
 attribute vec3 normal;
 
+
 uniform mat4 perspective;
+uniform mat4 frame;
 uniform vec3 light;
 uniform vec3 viewer;
+uniform vec4 color;
 
 varying vec3 phongL;
 varying vec3 phongN;
 varying vec3 phongV;
 varying vec3 phongI;
-//varying float fDistance;
 varying vec3 sources[2];
 
 void main () {
-  gl_Position = perspective * vec4(position, 1.0);
-  phongL = normalize(light - position);
+  gl_Position = perspective * frame * vec4(position, 1.0);
+  phongL = normalize(light - (frame * vec4(position, 1.0)).xyz);
   phongN = normalize(normal);
   phongV = normalize(viewer - position);
-
-  phongI = color;
-  // fDistance = length(light - position);
+  phongI = color.rgb;
   sources[0] = light;
   sources[1] = position;
 }
@@ -75,7 +44,6 @@ edgeVertexShader =
 
 precision mediump float;
 attribute vec3 position;
-attribute vec3 color;
 attribute vec3 n1;
 attribute vec3 n2;
 attribute vec3 n3;
@@ -95,6 +63,7 @@ varying vec3 phongI;
 varying vec3 sources[2];
 
 // acceptable at faking diffuse lighting, quite poor for specular lighting
+// NEEDS TO TRANSFORM NEIGHBORS TO GET THE RIGHT NORMAL
 vec3 estimateNormal(vec3 p, vec3 n1, vec3 n2, vec3 n3, vec3 n4, vec3 n5, vec3 n6) {
   vec3 estimate = -0.3333 * (normalize(cross(p - n1, p - n2)) + normalize(cross(p - n3, p - n4)) + normalize(cross(p - n5, p - n6)));
   return normalize(estimate);
@@ -107,6 +76,7 @@ void main () {
   phongN = estimateNormal(position,n1,n2,n3,n4,n5,n6);
   phongV = normalize(viewer - position);
 
+  vec3 color = vec3(0.6, 0.7, 0.8);
   phongI = color;
   // fDistance = length(light - position);
   sources[0] = light;
@@ -116,43 +86,45 @@ void main () {
 |]
 
 
-oceanVertexShader : Shader EdgedVertex (Uniforms { texture : Texture }) { vcoord : Vec3 }
+
+-- oceanVertexShader : Shader EdgedVertex (Uniforms { texture : Texture }) { vcoord : Vec3 }
+
+
 oceanVertexShader =
     [glsl|
 
 precision mediump float;
 attribute vec3 position;
-attribute vec3 color;
-attribute vec3 n1;
-attribute vec3 n2;
-attribute vec3 n3;
-attribute vec3 n4;
-attribute vec3 n5;
-attribute vec3 n6;
 
 uniform mat4 perspective;
+uniform mat4 frame;
 uniform vec3 light;
 uniform vec3 viewer;
-uniform sampler2D texture; // displacement map
+uniform vec4 color;
 
-varying vec3 vcoord;
+uniform sampler2D displacement; // displacement map
+uniform sampler2D normals; // normal map
 
-
-// acceptable at faking diffuse lighting, quite poor for specular lighting
-vec3 estimateNormal(vec3 p, vec3 n1, vec3 n2, vec3 n3, vec3 n4, vec3 n5, vec3 n6) {
-  vec3 estimate = -0.3333 * (normalize(cross(p - n1, p - n2)) + normalize(cross(p - n3, p - n4)) + normalize(cross(p - n5, p - n6)));
-  return normalize(estimate);
-}
-
+varying vec3 phongL;
+varying vec3 phongN;
+varying vec3 phongV;
+varying vec3 phongI;
+varying vec3 sources[2];
 
 void main () {
   // vec3 position = a_position + texture2D(u_displacementMap, a_coordinates).rgb * (u_geometrySize / u_size);
   vec3 displacedPosition = position;
-  displacedPosition.z = position.z + texture2D(texture, position.xy / 10.0).b * 2.0;
+  // WHICH COMPONENTS OF DISPLACEMENT TO USE?
+  displacedPosition.xyz = position.xyz + texture2D(displacement, position.xy / 10.0).xyz * 5.0;
   displacedPosition.xy = displacedPosition.xy * 10.0;
 
-  gl_Position = perspective * vec4(displacedPosition, 1.0);
-  vcoord.yz = position.xy;
+  gl_Position = perspective * frame * vec4(displacedPosition, 1.0);
+  phongL = normalize(light - (frame * vec4(displacedPosition, 1.0)).xyz);
+  phongN = normalize(texture2D(normals, position.xy / 10.0).xyz);
+  phongV = normalize(viewer - displacedPosition);
+  phongI = color.rgb;
+  sources[0] = light;
+  sources[1] = displacedPosition;
 
 }
 
@@ -200,11 +172,11 @@ vec3 hsv2rgb(vec3 c) {
 void main () {
 
   float distance = length(sources[1] - sources[0]);
-  float dropoff = (1.0 / pow(distance, 2.0)) * 40.0;
-  dropoff = clamp(dropoff, 0.5, 1.0);
+  float dropoff = (1.0 / pow(distance, 1.0)) * 12.0;
+  dropoff = clamp(dropoff, 0.0, 1.0);
 
   // these can be color-dependent
-  float kd = 0.5;
+  float kd = 1.0;
   float ks = 0.5;
 
   vec3 L = normalize(phongL);
@@ -231,26 +203,31 @@ void main () {
 
 
 -- regular texture shaders
+-- textureVertexShader : Shader Attribute (Uniforms { texture : Texture }) { vcoord : Vec3 }
 
 
-textureVertexShader : Shader Vertex (Uniforms { texture : Texture }) { vcoord : Vec3 }
 textureVertexShader =
     [glsl|
 
 attribute vec3 position;
 attribute vec3 coords;
 uniform mat4 perspective;
+uniform mat4 frame;
 varying vec3 vcoord;
 
+
 void main () {
-  gl_Position = perspective * vec4(position, 1.0);
+  gl_Position = perspective * frame * vec4(position, 1.0);
   vcoord = coords;
 }
 
 |]
 
 
-textureFragmentShader : Shader {} (Uniforms { texture : Texture }) { vcoord : Vec3 }
+
+-- textureFragmentShader : Shader {} (Uniforms { texture : Texture }) { vcoord : Vec3 }
+
+
 textureFragmentShader =
     [glsl|
 
@@ -259,7 +236,7 @@ uniform sampler2D texture;
 varying vec3 vcoord;
 
 void main () {
-  gl_FragColor = texture2D(texture, vcoord.yz);
+  gl_FragColor = texture2D(texture, vcoord.xy );
 }
 
 |]

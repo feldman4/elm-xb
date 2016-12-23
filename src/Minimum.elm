@@ -8,7 +8,7 @@ import Math.Vector3 as V3
 import Math.Matrix4 exposing (..)
 import Math.Matrix4 as M4
 import Task exposing (Task)
-import Time exposing (..)
+import Time
 import AnimationFrame
 import Window
 import Drag
@@ -22,6 +22,7 @@ type alias Model a =
         | keys : Keys
         , window : { size : Window.Size, dt : Float }
         , person : Person
+        , clock : Time.Time
         , dragModel : Drag.Model
     }
 
@@ -44,7 +45,7 @@ type alias Keys =
 
 type Action
     = KeyChange ( Bool, KeyCode )
-    | Animate Time
+    | Animate Time.Time
     | Resize Window.Size
     | DragMsg Drag.Msg
     | Drag ( Int, Int )
@@ -79,6 +80,7 @@ init =
       , keys = Keys False False False False False
       , window = { size = Window.Size 0 0, dt = 0 }
       , dragModel = Drag.initialModel
+      , clock = 0
       }
     , Cmd.batch
         [ Task.perform Resize Window.size
@@ -115,6 +117,7 @@ update action model =
                             |> gravity (dt / 500)
                             |> physics (dt / 500)
                     , window = { window | dt = dt }
+                    , clock = model.clock + dt
                 }
                     ! []
 

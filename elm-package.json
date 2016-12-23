@@ -26,6 +26,7 @@
         "jvoigtlaender/elm-memo": "2.0.5 <= v < 3.0.0",
         "mgold/elm-animation": "1.0.5 <= v < 2.0.0",
         "mgold/elm-random-pcg": "4.0.2 <= v < 5.0.0",
+        "nphollon/geo3d": "2.1.1 <= v < 3.0.0",
         "tripokey/elm-fuzzy": "5.0.3 <= v < 6.0.0"
     },
     "elm-version": "0.18.0 <= v < 0.19.0"

@@ -2,16 +2,14 @@ module Island.Island exposing (..)
 
 import Html exposing (text, div, br)
 import Html.Attributes exposing (style, height, width)
-import Math.Vector3 exposing (vec3, Vec3)
-import Math.Vector3 as V3
 import WebGL exposing (Renderable, Shader, Texture, Error)
 import Minimum
 import Island.Types exposing (..)
-import Meshes exposing (icosphere, subdivide)
 import Island.Geometry exposing (..)
-import Island.Shaders exposing (..)
 import Island.Render exposing (..)
+import Island.Things exposing (..)
 import Task
+import EveryDict
 
 
 main : Program Never Model Action
@@ -33,8 +31,9 @@ init =
         action =
             Cmd.map MinAction msg
 
-        textureAction ( texId, url ) =
-            WebGL.loadTexture url
+        textureAction name =
+            textureURL name
+                |> WebGL.loadTexture
                 |> Task.attempt
                     (\result ->
                         case result of
@@ -42,24 +41,22 @@ init =
                                 TextureError err
 
                             Ok val ->
-                                TextureLoaded (texId val)
+                                TextureLoaded ( name, val )
                     )
 
         textureActions =
-            List.map textureAction
-                [ ( Tex0, "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/woodCrate.jpg" )
-                , ( Tex1, "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/thwomp_face.jpg" )
-                ]
+            [ Crate, Thwomp, NormalMap, DisplacementMap ]
+                |> List.map textureAction
     in
-        { boat = initBoat |> addPQ
-        , island = initIsland |> addPQ
+        { objects = [ initPlane, face0, face1, initBoat, initSeaSphere, initLightCube ]
         , sea = [] |> addPQ
         , gridSea = [] |> addPQ
         , person = model.person
         , keys = model.keys
         , window = model.window
+        , clock = model.clock
         , dragModel = model.dragModel
-        , textures = { tex0 = Nothing, tex1 = Nothing }
+        , textures = EveryDict.empty
         }
             ! ([ action ] ++ textureActions)
 
@@ -67,12 +64,7 @@ init =
 type Action
     = MinAction Minimum.Action
     | TextureError Error
-    | TextureLoaded TextureID
-
-
-type TextureID
-    = Tex0 Texture
-    | Tex1 Texture
+    | TextureLoaded ( NamedTexture, Texture )
 
 
 update : Action -> Model -> ( Model, Cmd Action )
@@ -92,20 +84,8 @@ update action model =
         TextureError err ->
             model ! []
 
-        TextureLoaded texture ->
-            let
-                oldTextures =
-                    model.textures
-
-                newTextures =
-                    case texture of
-                        Tex0 tex ->
-                            { oldTextures | tex0 = Just tex }
-
-                        Tex1 tex ->
-                            { oldTextures | tex1 = Just tex }
-            in
-                { model | textures = newTextures } ! []
+        TextureLoaded ( name, texture ) ->
+            { model | textures = EveryDict.insert name texture model.textures } ! []
 
 
 subscriptions : Model -> Sub Action
@@ -118,53 +98,49 @@ subscriptions model =
 view : Model -> Html.Html Action
 view model =
     let
-        boat =
-            model.boat
-
-        island =
-            model.island
-
-        sea =
-            model.sea
-
         window =
             model.window
 
-        render drawable =
-            renderDrawable drawable model colorVertexShader colorFragmentShader
+        dummyFilter ( name, texture ) =
+            case name of
+                NormalMap ->
+                    [ texture ]
 
-        unpack m =
-            Maybe.map2 (,) m.tex0 m.tex1
+                DisplacementMap ->
+                    [ texture ]
+
+                _ ->
+                    []
 
         textureEntity =
-            case unpack model.textures of
-                Just ( tex0, tex1 ) ->
-                    [ renderTextured (face0 |> meshPQToTriangle) model tex0 textureVertexShader textureFragmentShader
-                    , renderTextured (face1 |> meshPQToTriangle) model tex1 textureVertexShader textureFragmentShader
-                    ]
-                        ++ [ renderDummyTextures ( tex0, tex1 ) ]
+            let
+                dummyTextures =
+                    EveryDict.toList model.textures
+                        |> List.concatMap dummyFilter
+            in
+                case dummyTextures of
+                    tex0 :: tex1 :: [] ->
+                        [ renderDummyTextures ( tex0, tex1 ) ]
 
-                Nothing ->
-                    []
+                    tex0 :: [] ->
+                        [ renderDummyTextures ( tex0, tex0 ) ]
 
-        displacementEntity =
-            case unpack model.textures of
-                Just ( tex0, tex1 ) ->
-                    [ renderTextured gridSeaMeshEdged model tex0 oceanVertexShader textureFragmentShader ]
+                    [] ->
+                        []
 
-                Nothing ->
-                    []
+                    _ ->
+                        let
+                            a =
+                                Debug.crash "More than 2 dummy textures."
+                        in
+                            []
 
         entities =
-            [ -- [ render (boat.mesh |> indexedMeshToTriangle)
-              -- , render (island.mesh |> meshToTriangle)
-              -- , renderTextured model seaMeshEdged edgeVertexShader colorFragmentShader
-              -- , renderDrawable (initCube |> indexedMeshToTriangle) model
-              render (initLightCube |> indexedMeshToTriangle)
-            ]
-                ++ displacementEntity
-                ++ textureEntity
+            (model.objects
+                |> List.map (renderObject model)
+            )
 
+        -- ++ textureEntity
         message =
             [ "Enjoy your stay on the island.", "dt: " ++ toString window.dt ]
 
@@ -201,94 +177,3 @@ view model =
 
 
 -- FUNCTIONS
--- INIT
-
-
-initBoat : IndexedMesh
-initBoat =
-    boat |> indexMesh |> useCornerNormals |> invertIndexedNormals
-
-
-initSea : Mesh
-initSea =
-    let
-        sea =
-            makeGrid 50 50 |> List.concatMap quadToTri
-
-        x =
-            centroid sea |> V3.scale -1
-    in
-        offset sea x
-
-
-initSeaSphere : IndexedMesh
-initSeaSphere =
-    let
-        sea =
-            icosphere 4
-
-        x =
-            centroid sea |> V3.scale -1
-
-        mesh =
-            offset sea x
-                |> eachMeshPoint (V3.scale 10)
-
-        indexedMesh =
-            mesh
-                |> indexMesh
-                |> useCornerNormals
-    in
-        indexedMesh
-
-
-initCube : IndexedMesh
-initCube =
-    let
-        x =
-            centroid cube |> V3.scale -1
-
-        mesh =
-            offset cube x
-                |> eachMeshPoint (V3.scale 3.1)
-                |> eachMeshPoint (V3.add (vec3 0 0 0))
-    in
-        mesh |> indexMesh |> invertIndexedNormals
-
-
-initLightCube : IndexedMesh
-initLightCube =
-    let
-        x =
-            centroid cube |> V3.scale -1
-
-        mesh =
-            offset cube x
-                |> eachMeshPoint (V3.scale 0.3)
-                |> eachMeshPoint (V3.add lightSource)
-    in
-        mesh |> indexMesh |> invertIndexedNormals
-
-
-{-| Avoid repeating costly meshToTriangle.
--}
-seaMesh : WebGL.Drawable Vertex
-seaMesh =
-    initSeaSphere |> indexedMeshToTriangle
-
-
-seaMeshEdged : WebGL.Drawable EdgedVertex
-seaMeshEdged =
-    initSeaSphere |> edgedMeshToTriangle
-
-
-gridSeaMeshEdged : WebGL.Drawable EdgedVertex
-gridSeaMeshEdged =
-    initSea |> eachMeshPoint (V3.scale 0.02) |> indexMesh |> edgedMeshToTriangle
-
-
-initIsland : Mesh
-initIsland =
-    centroid island
-        |> V3.scale -1
-        |> offset island
