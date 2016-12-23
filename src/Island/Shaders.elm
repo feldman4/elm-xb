@@ -176,8 +176,8 @@ vec3 hsv2rgb(vec3 c) {
 void main () {
 
   float distance = length(sources[1] - sources[0]);
-  float dropoff = (1.0 / pow(distance, 1.0)) * 120.0;
-  dropoff = clamp(dropoff, 0.5, 0.6);
+  float dropoff = (1.0 / pow(distance, 2.0)) * 400.0;
+  dropoff = clamp(dropoff, 0.0, 1.0);
 
   // these can be color-dependent
   float kd = 1.0;
