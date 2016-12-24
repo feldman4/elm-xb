@@ -1,4 +1,4 @@
-module Minimum exposing (..)
+port module Minimum exposing (..)
 
 -- adapted from elm-community/webgl crate example
 
@@ -20,6 +20,7 @@ import Drag
 type alias Model a =
     { a
         | keys : Keys
+        , gamepad : Gamepad
         , window : { size : Window.Size, dt : Float }
         , person : Person
         , clock : Time.Time
@@ -45,6 +46,7 @@ type alias Keys =
 
 type Action
     = KeyChange ( Bool, KeyCode )
+    | GamepadChange (Maybe GamepadRaw)
     | Animate Time.Time
     | Resize Window.Size
     | DragMsg Drag.Msg
@@ -78,6 +80,7 @@ init : ( Model {}, Cmd Action )
 init =
     ( { person = defaultPerson
       , keys = Keys False False False False False
+      , gamepad = Gamepad 0 0 0 0 defaultButton defaultButton
       , window = { size = Window.Size 0 0, dt = 0 }
       , dragModel = Drag.initialModel
       , clock = 0
@@ -98,6 +101,14 @@ update action model =
         KeyChange msg ->
             { model | keys = updateKeys msg model.keys } ! []
 
+        GamepadChange change ->
+            case change of
+                Just gamepadRaw ->
+                    { model | gamepad = gamepadRaw |> broil } ! []
+
+                Nothing ->
+                    model ! []
+
         Resize size ->
             let
                 window =
@@ -113,7 +124,8 @@ update action model =
                 { model
                     | person =
                         model.person
-                            |> move (directions model.keys)
+                            |> move (directions model.keys model.gamepad)
+                            |> turn (gamepadLook model.gamepad)
                             |> gravity (dt / 500)
                             |> physics (dt / 500)
                     , window = { window | dt = dt }
@@ -138,6 +150,70 @@ update action model =
 
 
 
+-- GAMEPAD
+
+
+port gamepad : (Maybe GamepadRaw -> msg) -> Sub msg
+
+
+type alias Button =
+    { pressed : Bool, value : Float }
+
+
+type alias GamepadRaw =
+    { axes : List Float, buttons : List Button }
+
+
+type alias Gamepad =
+    { x : Float, y : Float, up : Float, right : Float, a : Button, b : Button }
+
+
+defaultButton : Button
+defaultButton =
+    { pressed = False, value = 0 }
+
+
+broil : GamepadRaw -> Gamepad
+broil gamepadRaw =
+    let
+        index n xs =
+            xs |> List.drop n |> List.head
+
+        x =
+            gamepadRaw.axes |> index 0 |> Maybe.withDefault 0 |> outerClamp
+
+        y =
+            gamepadRaw.axes |> index 1 |> Maybe.withDefault 0 |> outerClamp
+
+        up =
+            gamepadRaw.axes |> index 2 |> Maybe.withDefault 0 |> outerClamp
+
+        right =
+            gamepadRaw.axes |> index 3 |> Maybe.withDefault 0 |> outerClamp
+
+        a =
+            gamepadRaw.buttons |> index 0 |> Maybe.withDefault defaultButton
+
+        b =
+            gamepadRaw.buttons |> index 1 |> Maybe.withDefault defaultButton
+
+        outerClamp x =
+            if (x < -0.2) || (x > 0.2) then
+                x
+            else
+                0
+    in
+        { x = x, y = y, up = up, right = right, a = a, b = b }
+
+
+gamepadLook : Gamepad -> { dx : Float, dy : Float }
+gamepadLook gamepad =
+    { dx = gamepad.up * -gazeSpeed * 5
+    , dy = gamepad.right * -gazeSpeed * 5
+    }
+
+
+
 -- OTHER
 
 
@@ -148,6 +224,7 @@ subscriptions model =
     , Keyboard.ups (keyChange False)
     , Window.resizes Resize
     , Drag.subscriptions DragMsg model.dragModel
+    , gamepad GamepadChange
     ]
         |> Sub.batch
 
@@ -179,8 +256,8 @@ updateKeys ( on, keyCode ) k =
             k
 
 
-directions : Keys -> { x : Int, y : Int, z : Int }
-directions { left, right, up, down, shift } =
+directions : Keys -> Gamepad -> { x : Float, y : Float, z : Float }
+directions { left, right, up, down, shift } { x, y, a } =
     let
         direction a b =
             case ( a, b ) of
@@ -194,13 +271,13 @@ directions { left, right, up, down, shift } =
                     0
 
         directionUp =
-            if shift then
+            if (shift || a.pressed) then
                 1
             else
                 0
     in
-        { x = direction down up
-        , y = direction right left
+        { x = (direction down up) - 2 * y
+        , y = (direction right left) - 2 * x
         , z = directionUp
         }
 
@@ -220,7 +297,7 @@ turn { dx, dy } person =
         { person | gaze = transform r gaze |> V3.normalize }
 
 
-move : { x : Int, y : Int, z : Int } -> Person -> Person
+move : { x : Float, y : Float, z : Float } -> Person -> Person
 move directions person =
     if getZ person.position > eyeLevel then
         person
@@ -228,7 +305,7 @@ move directions person =
         let
             -- ridiculous axis alignment
             dKey =
-                vec3 (toFloat directions.x) (toFloat directions.y) 0
+                vec3 (directions.x) (directions.y) 0
 
             flatGaze =
                 vec3 (V3.getX person.gaze) (V3.getY person.gaze) 0
@@ -248,7 +325,7 @@ move directions person =
                 |> jump directions.z
 
 
-jump : Int -> Person -> Person
+jump : Float -> Person -> Person
 jump z person =
     if (z == 0) || getZ person.position > eyeLevel then
         person

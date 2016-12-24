@@ -55,17 +55,36 @@ type Material
 
 
 -- | Maybe Texture
+-- type Object = Basic BasicObject | Motion MotionObject
 
 
 type alias Object =
-    { drawable : Thing
-    , material : Material
-    , frame :
-        Frame.Frame
-    , scale :
-        Vec3
-        -- doesn't account for scaling, can just multiply Mat4
+    GenericObject {}
+
+
+type alias Node =
+    { position : Vec3, mass : Float }
+
+
+type alias MotionObject =
+    GenericObject { lastFrame : Frame.Frame, nodes : List Node }
+
+
+type alias GenericObject a =
+    { a
+        | drawable : Thing
+        , material : Material
+        , frame :
+            Frame.Frame
+        , scale :
+            Vec3
+            -- doesn't account for scaling, can just multiply Mat4
+        , effects : Effects a
     }
+
+
+type Effects a
+    = Effects (List (GenericObject a -> GenericObject a))
 
 
 {-| For rendering

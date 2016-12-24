@@ -1,4 +1,4 @@
-module Island.Island exposing (..)
+port module Island.Island exposing (..)
 
 import Html exposing (text, div, br)
 import Html.Attributes exposing (style, height, width)
@@ -56,6 +56,7 @@ init =
         , gridSea = [] |> addPQ
         , person = model.person
         , keys = model.keys
+        , gamepad = model.gamepad
         , window = model.window
         , clock = model.clock
         , dragModel = model.dragModel
@@ -68,6 +69,7 @@ type Action
     = MinAction Minimum.Action
     | TextureError Error
     | TextureLoaded ( NamedTexture, Texture )
+    | WaterIndicator (List Float)
 
 
 update : Action -> Model -> ( Model, Cmd Action )
@@ -90,10 +92,25 @@ update action model =
         TextureLoaded ( name, texture ) ->
             { model | textures = EveryDict.insert name texture model.textures } ! []
 
+        WaterIndicator heights ->
+            { model | objects = model.objects |> List.map (setWaterFrame heights) } ! []
+
+
+setWaterFrame : List Float -> GenericObject a -> GenericObject a
+setWaterFrame heights object =
+    object
+
+
+port waterIndicator : (List Float -> msg) -> Sub msg
+
+
+port askWaterIndicator : ( Int, Int ) -> Cmd msg
+
 
 subscriptions : Model -> Sub Action
 subscriptions model =
     [ Sub.map MinAction (Minimum.subscriptions model)
+    , waterIndicator WaterIndicator
     ]
         |> Sub.batch
 
@@ -178,5 +195,4 @@ view model =
             ]
 
 
-
--- FUNCTIONS
+port check : String -> Cmd msg
