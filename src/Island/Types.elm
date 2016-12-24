@@ -54,7 +54,6 @@ type Material
 
 
 
--- | Maybe Texture
 -- type Object = Basic BasicObject | Motion MotionObject
 
 
