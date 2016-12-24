@@ -1,6 +1,3 @@
--- Base.elm
-
-
 module Base exposing (..)
 
 import Html
@@ -17,10 +14,11 @@ type Effect
     = DrinkInk
     | LerpFood
     | UpdateFood Int
+    | FoodEffect
 
 
 type alias Object =
-    { toGeneric : Generic {}
+    { toGeneric : Generic
     , effects : Lazy Base
     , string :
         String
@@ -28,7 +26,14 @@ type alias Object =
     }
 
 
-type alias Generic a =
+type alias Generic =
+    { name : String }
+
+
+{-| Could use this to define an object class, allows any field in data
+constructor. Not sure why you would want that.
+-}
+type alias HasGeneric a =
     { a | name : String }
 
 
@@ -44,7 +49,7 @@ type alias Dinner a =
     Food (Drink a)
 
 
-toGeneric : Generic a -> Generic {}
+toGeneric : HasGeneric a -> Generic
 toGeneric data =
     { name = data.name }
 
@@ -54,7 +59,7 @@ foldlf acc fs =
     List.foldl (\f acc -> f acc) acc fs
 
 
-foodString : Generic (Food a) -> String
+foodString : Food Generic -> String
 foodString data =
     [ "name:" ++ .name (toGeneric data)
     , "food:" ++ toString data.food
@@ -62,7 +67,7 @@ foodString data =
         |> String.join ", "
 
 
-foo : Generic (Food a) -> List (Generic (Food a) -> Generic (Food a)) -> Base
+foo : Food Generic -> List (Food Generic -> Food Generic) -> Base
 foo data effects =
     let
         lazyEffects =
@@ -76,7 +81,7 @@ foo data effects =
             }
 
 
-fooEffects : Effect -> List (Food a -> Food a)
+fooEffects : Effect -> List (Food Generic -> Food Generic)
 fooEffects effect =
     case effect of
         LerpFood ->
@@ -99,12 +104,33 @@ fooEffects effect =
 -- bar : { a | name : String, drink : Int } -> Base
 
 
-bar : Generic (Drink a) -> List (Generic (Drink a) -> Generic (Drink a)) -> Base
+lazyEffects : (a -> List b -> c) -> a -> List (a -> a) -> Lazy c
+lazyEffects foo data effects =
+    Lazy.lazy (\_ -> foo (foldlf data effects) [])
+
+
+generic : Generic -> List (Generic -> Generic) -> Base
+generic data effects =
+    let
+        stringForm =
+            "name:" ++ .name (toGeneric data)
+
+        addEffect effect =
+            case effect of
+                _ ->
+                    generic data effects
+    in
+        Base
+            { toGeneric = toGeneric data
+            , effects = lazyEffects generic data effects
+            , string = stringForm
+            , addEffect = addEffect
+            }
+
+
+bar : HasGeneric (Drink a) -> List (HasGeneric (Drink a) -> HasGeneric (Drink a)) -> Base
 bar data effects =
     let
-        effects2 =
-            Lazy.lazy (\_ -> bar (foldlf data effects) [])
-
         stringForm =
             [ "name:" ++ .name (toGeneric data)
             , "drink:" ++ toString data.drink
@@ -116,15 +142,17 @@ bar data effects =
                 _ ->
                     bar data effects
     in
-        Base { toGeneric = toGeneric data, effects = effects2, string = stringForm, addEffect = addEffect }
+        Base
+            { toGeneric = toGeneric data
+            , effects = lazyEffects bar data effects
+            , string = stringForm
+            , addEffect = addEffect
+            }
 
 
-foobar : Generic (Dinner a) -> List (Generic (Dinner a) -> Generic (Dinner a)) -> Base
+foobar : Dinner Generic -> List (Dinner Generic -> Dinner Generic) -> Base
 foobar data effects =
     let
-        effects2 =
-            Lazy.lazy (\_ -> foobar (foldlf data effects) [])
-
         stringForm =
             [ "name:" ++ .name (toGeneric data)
             , "drink:" ++ toString data.drink
@@ -140,7 +168,12 @@ foobar data effects =
                 _ ->
                     foobar data effects
     in
-        Base { toGeneric = toGeneric data, effects = effects2, string = stringForm, addEffect = addEffect }
+        Base
+            { toGeneric = toGeneric data
+            , effects = lazyEffects foobar data effects
+            , string = stringForm
+            , addEffect = addEffect
+            }
 
 
 
@@ -165,17 +198,17 @@ local memory that is not part of the model/object, could
 a) return new effect, i.e., (Base, Maybe Effect)
 b) when apply effects, remove all effects and add any new ones.
 -}
-inkDrink : { a | name : String, drink : Int } -> Base
-inkDrink data =
-    { data | drink = data.drink + 1 } |> (flip bar) []
-
-
-foodLerp : { a | name : String, food : Int } -> Base
-foodLerp data =
-    { data | food = data.food + 1 } |> (flip foo) []
 
 
 
+-- inkDrink : { a | name : String, drink : Int } -> Base
+-- inkDrink data =
+--     { data | drink = data.drink + 1 } |> (flip bar) []
+--
+--
+-- foodLerp : { a | name : String, food : Int } -> Base
+-- foodLerp data =
+--     { data | food = data.food + 1 } |> (flip foo) []
 -- big time update rule
 -- bigTimeUpdateRule objects model =
 --   let
@@ -221,7 +254,7 @@ main =
         l : List Base
         l =
             [ preFoo
-            , bar { name = "bar", drink = 0 } [ inkDrink2, inkDrink2 ]
+            , bar { name = "bar", drink = 0, fuckyou = "yes" } [ inkDrink2, inkDrink2 ]
             , foobar { name = "foobar", food = 0, drink = 0 } [ inkDrink2 ]
             ]
 

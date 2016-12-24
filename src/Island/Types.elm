@@ -61,12 +61,16 @@ type alias Object =
     GenericObject {}
 
 
-type alias Node =
+type alias Particle =
     { position : Vec3, mass : Float }
 
 
-type alias MotionObject =
-    GenericObject { lastFrame : Frame.Frame, nodes : List Node }
+type alias Motion a =
+    { a | lastFrame : Frame.Frame }
+
+
+type alias Rigid a =
+    { a | nodes : List Particle }
 
 
 type alias GenericObject a =
