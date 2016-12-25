@@ -36,14 +36,21 @@ object.
 type alias Object =
     { toGeneric : Generic
     , string : String
-    , doEffects : Lazy Base
-    , fromEffects : List Effect -> Base
-    , appendEffect :
-        Effect -> Base
+    , doEffects : DoEffects
+    , replaceEffects :
+        ReplaceEffects
         -- , prependEffect : Effect -> Base
         -- , clearEffects : Base
         -- , viewAppendedEffects : List (Effect -> Base)
     }
+
+
+type DoEffects
+    = DoEffects (Lazy Object)
+
+
+type ReplaceEffects
+    = ReplaceEffects (List Effect -> Object)
 
 
 type alias Generic =
@@ -102,98 +109,119 @@ fooEffects effect =
             Nothing
 
 
-fromEffects foo data effects =
+makeReplaceEffects : (HasGeneric a -> Object) -> HasGeneric a -> List Effect -> Object
+makeReplaceEffects foo data effects =
     foo { data | effects = effects }
 
 
+generic : Generic -> Object
+generic data =
+    let
+        stringForm =
+            "name:" ++ .name (toGeneric data)
 
--- generic : Generic -> List (Generic -> Generic) -> Base
--- generic data effects =
---     let
---         stringForm =
---             "name:" ++ .name (toGeneric data)
---
---         appendEffect effect =
---             case effect of
---                 _ ->
---                     generic data effects
---     in
---         Base
---             { toGeneric = toGeneric data
---             , doEffects = lazyEffects generic data effects
---             , fromEffects = fromEffects generic data
---             , string = stringForm
---             , appendEffect = appendEffect
---             }
+        genericEffects effect =
+            case effect of
+                _ ->
+                    Nothing
+
+        trueEffects =
+            data.effects |> List.filterMap genericEffects
+
+        lazyEffects =
+            Lazy.lazy (\_ -> generic (foldlf data trueEffects))
+    in
+        { toGeneric = toGeneric data
+        , doEffects = DoEffects lazyEffects
+        , replaceEffects = ReplaceEffects (makeReplaceEffects generic data)
+        , string = stringForm
+        }
 
 
-foo : Food Generic -> Base
+foo : Food Generic -> Object
 foo data =
     let
         trueEffects =
             data.effects
                 |> List.filterMap fooEffects
 
-        lazyEffects : Lazy Base
         lazyEffects =
             Lazy.lazy (\_ -> foo (foldlf data trueEffects))
     in
-        Base
-            { toGeneric = toGeneric data
-            , doEffects = lazyEffects
-            , fromEffects = fromEffects foo data
-            , string = foodString data
-            , appendEffect = (\e -> fromEffects foo data (data.effects ++ [ e ]))
-            }
+        { toGeneric = toGeneric data
+        , doEffects = DoEffects lazyEffects
+        , replaceEffects = ReplaceEffects (makeReplaceEffects foo data)
+        , string = foodString data
+        }
+
+
+bar : HasGeneric (Drink a) -> Object
+bar data =
+    let
+        stringForm =
+            [ "name:" ++ .name (toGeneric data)
+            , "drink:" ++ toString data.drink
+            ]
+                |> String.join ", "
+
+        barEffects effect =
+            case effect of
+                DrinkInk ->
+                    Just inkDrink2
+
+                _ ->
+                    Nothing
+
+        trueEffects =
+            data.effects
+                |> List.filterMap barEffects
+
+        lazyEffects =
+            Lazy.lazy (\_ -> bar (foldlf data trueEffects))
+    in
+        { toGeneric = toGeneric data
+        , doEffects = DoEffects lazyEffects
+        , replaceEffects = ReplaceEffects (makeReplaceEffects bar data)
+        , string = stringForm
+        }
+
+
+foobar : Dinner Generic -> Object
+foobar data =
+    let
+        stringForm =
+            [ "name:" ++ .name (toGeneric data)
+            , "drink:" ++ toString data.drink
+            , "food:" ++ toString data.food
+            ]
+                |> String.join ", "
+
+        foobarEffects effect =
+            case effect of
+                LerpFood ->
+                    Just foodLerp2
+
+                DrinkInk ->
+                    Just inkDrink2
+
+                _ ->
+                    Nothing
+
+        trueEffects =
+            data.effects
+                |> List.filterMap foobarEffects
+
+        lazyEffects =
+            Lazy.lazy (\_ -> foobar (foldlf data trueEffects))
+    in
+        { toGeneric = toGeneric data
+        , doEffects = DoEffects lazyEffects
+        , string = stringForm
+        , replaceEffects = ReplaceEffects (makeReplaceEffects foobar data)
+        }
 
 
 
--- bar : HasGeneric (Drink a) -> List (HasGeneric (Drink a) -> HasGeneric (Drink a)) -> Base
--- bar data effects =
---     let
---         stringForm =
---             [ "name:" ++ .name (toGeneric data)
---             , "drink:" ++ toString data.drink
---             ]
---                 |> String.join ", "
---
---         appendEffect effect =
---             case effect of
---                 _ ->
---                     bar data effects
---     in
---         Base
---             { toGeneric = toGeneric data
---             , lazyEffects = lazyEffects bar data effects
---             , string = stringForm
---             , appendEffect = appendEffect
---             }
---
---
--- foobar : Dinner Generic -> List (Dinner Generic -> Dinner Generic) -> Base
--- foobar data effects =
---     let
---         stringForm =
---             [ "name:" ++ .name (toGeneric data)
---             , "drink:" ++ toString data.drink
---             , "food:" ++ toString data.food
---             ]
---                 |> String.join ", "
---
---         appendEffect effect =
---             case effect of
---                 LerpFood ->
---                     foobar data (effects ++ [ foodLerp2 ])
---
---                 _ ->
---                     foobar data effects
---     in
---         Base
---             { toGeneric = toGeneric data
---             , effects = lazyEffects foobar data effects
---             , string = stringForm
---             , appendEffect = appendEffect
---             }
 -- can we add an effect to data that supports it??
 -- compose : (data -> Base) -> (data -> Base) -> (data -> Base)
 -- composeEffects data =
@@ -238,9 +266,13 @@ apply f (Base x) =
     f x
 
 
-applyEffects : Base -> Base
-applyEffects (Base x) =
-    Lazy.force x.doEffects
+applyEffects : Object -> Object
+applyEffects { doEffects } =
+    let
+        (DoEffects x) =
+            doEffects
+    in
+        Lazy.force x
 
 
 {-| Use like:
@@ -253,12 +285,25 @@ You can do UpdateFood to something that doesn't have .food and it just
 does nothing. Should generate a type error instead. Could tie the type of Base
 to allowed effects, but then can't use one Effect on multiple types.
 -}
-appendEffect : Effect -> Base -> Base
-appendEffect effect (Base x) =
-    x.appendEffect effect
+replaceEffects : Object -> List Effect -> Object
+replaceEffects { replaceEffects } =
+    let
+        (ReplaceEffects x) =
+            replaceEffects
+    in
+        x
 
 
-main : Program Never (List Base) Msg
+appendEffect : Effect -> Object -> Object
+appendEffect effect object =
+    let
+        effects =
+            object.toGeneric.effects ++ [ effect ]
+    in
+        replaceEffects object effects
+
+
+main : Program Never (List Object) Msg
 main =
     Html.program
         { init = init ! []
@@ -272,20 +317,20 @@ type Msg
     = NoOp
 
 
-update : Msg -> List Base -> ( List Base, Cmd Msg )
+update : Msg -> List Object -> ( List Object, Cmd Msg )
 update msg model =
     (model |> List.map addLerp) ! []
 
 
-addLerp : Base -> Base
-addLerp (Base base) =
-    if (base.toGeneric.name == "foobar") then
-        base.appendEffect LerpFood
+addLerp : Object -> Object
+addLerp object =
+    if (object.toGeneric.name == "foobar") then
+        appendEffect LerpFood object
     else
-        Base base
+        object
 
 
-init : List Base
+init : List Object
 init =
     let
         preFoo =
@@ -293,24 +338,24 @@ init =
                 |> appendEffect (UpdateFood 50)
 
         -- Fill a list with "derived instances".
-        l : List Base
+        l : List Object
         l =
             [ preFoo
-              -- , bar { name = "bar", drink = 0, randomField = "yes" } [ inkDrink2, inkDrink2 ]
-              -- , foobar { name = "foobar", food = 0, drink = 0 } [ inkDrink2 ]
+            , bar { name = "bar", drink = 0, randomField = "yes", effects = [ DrinkInk, DrinkInk ] }
+            , foobar { name = "foobar", food = 0, drink = 0, effects = [ DrinkInk, LerpFood ] }
             ]
     in
         l |> List.map addLerp
 
 
-view : List Base -> Html.Html Msg
+view : List Object -> Html.Html Msg
 view l_ =
     let
         -- Show result.
         text =
             l_
                 |> List.map applyEffects
-                |> List.map (\(Base x) -> x.string)
+                |> List.map .string
                 |> String.join " - "
     in
         Html.div [ Html.Events.onClick NoOp ] [ Html.text text ]
