@@ -55,6 +55,126 @@ type Material
 
 
 -- OBJECTS
+-- type Cell
+--     = Cell Core
+-- myList : List (AllObjects {})
+
+
+myList : List (AllObjects (RigidSomething {}))
+myList =
+    let
+        a =
+            { go = 3
+            , effects2 = []
+            , nodes = []
+            }
+
+        b =
+            { go = 3
+            , effects2 = []
+            , nodes = []
+            , name = "fuck you"
+            }
+    in
+        [ RigidSomething (RigidObject a)
+        , RigidSomething (RigidNamedObject b)
+        , FuckYouObject
+        ]
+
+
+
+-- filterMyList : List (RigidObject a)
+
+
+filterMyList : List (RigidSomething {})
+filterMyList =
+    let
+        f object =
+            case object of
+                RigidSomething x ->
+                    [ x ]
+
+                _ ->
+                    []
+
+        g object =
+            case object of
+                RigidObject x ->
+                    RigidObject { x | effects2 = [] }
+
+                RigidNamedObject x ->
+                    RigidNamedObject { x | effects2 = [] }
+    in
+        myList |> List.concatMap f |> List.map g
+
+
+type AllObjects a
+    = RigidSomething a
+    | NonRigidSomething a
+    | FuckYouObject
+
+
+type RigidSomething a
+    = RigidObject (RigidObject a)
+    | RigidNamedObject (RigidNamedObject a)
+
+
+type AllEffect
+    = Move ( Int, Int )
+    | Rotate Int
+
+
+type alias RigidObject a =
+    GO (Rigid { a | effects2 : List RigidEffect })
+
+
+type alias RigidNamedObject a =
+    GO (Rigid { a | name : String, effects2 : List RigidNamedEffect })
+
+
+type RigidNamedEffect
+    = NamedEffect NamedEffect
+    | RigidEffect RigidEffect
+
+
+type NamedEffect
+    = Rename String
+
+
+type RigidEffect
+    = RigidMove ( Int, Int )
+    | RigidRotate Int
+
+
+type alias GO a =
+    { a | go : Int }
+
+
+updateRigidNamed : RigidNamedObject a -> RigidNamedEffect -> RigidNamedObject a
+updateRigidNamed object effect =
+    case effect of
+        NamedEffect eff ->
+            case eff of
+                Rename string ->
+                    object
+
+        RigidEffect eff ->
+            rotate object
+
+
+updateRigid : RigidObject a -> RigidEffect -> RigidObject a
+updateRigid object effect =
+    case effect of
+        RigidMove ( x, y ) ->
+            object
+
+        RigidRotate theta ->
+            rotate object
+
+
+rotate : { b | go : Int } -> { b | go : Int }
+rotate object =
+    { object | go = 4 }
 
 
 type alias Object =

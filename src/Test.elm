@@ -1,6 +1,7 @@
 module Base exposing (..)
 
 import Html
+import Html.Events
 import List exposing (..)
 import String
 import Lazy exposing (Lazy)
@@ -21,6 +22,10 @@ type Effect
 Constructor lets you put raw effect functions in. Afterwards you need to use
 .appendEffect since objects all look the same from outside. Appended effects
 could be viewed and copied, like copying an animation from parent to child.
+
+Compare to regular pattern matching. Scales poorly: need to re-declare
+effect for all classes using it. Use common function to implement effect. Can
+filter objects by single type and get refined type signature ().
 -}
 type alias Object =
     { toGeneric : Generic
@@ -100,16 +105,6 @@ fooEffects effect =
 
         _ ->
             []
-
-
-
--- copyGeneric f data effects input =
---     let
---         newData =
---             { data | name = input.name }
---     in
---         f newData effects
--- bar : { a | name : String, drink : Int } -> Base
 
 
 lazyEffects : (a -> List b -> c) -> a -> List (a -> a) -> Lazy c
@@ -251,12 +246,39 @@ appendEffect effect (Base x) =
     x.appendEffect effect
 
 
-main : Html.Html msg
+main : Program Never (List Base) Msg
 main =
+    Html.program
+        { init = init ! []
+        , update = update
+        , view = view
+        , subscriptions = (\_ -> Sub.none)
+        }
+
+
+type Msg
+    = NoOp
+
+
+update : Msg -> List Base -> ( List Base, Cmd Msg )
+update msg model =
+    (model |> List.map addLerp) ! []
+
+
+addLerp : Base -> Base
+addLerp (Base base) =
+    if (base.toGeneric.name == "foobar") then
+        base.appendEffect LerpFood
+    else
+        Base base
+
+
+init : List Base
+init =
     let
         preFoo =
             foo { name = "foo", food = 0 } [ foodLerp2, foodLerp2 ]
-                |> appendEffect (UpdateFood 100)
+                |> appendEffect (UpdateFood 50)
 
         -- Fill a list with "derived instances".
         l : List Base
@@ -265,16 +287,18 @@ main =
             , bar { name = "bar", drink = 0, randomField = "yes" } [ inkDrink2, inkDrink2 ]
             , foobar { name = "foobar", food = 0, drink = 0 } [ inkDrink2 ]
             ]
-
-        l_ =
-            l |> List.map addLerp |> List.map applyEffects
-
-        addLerp : Base -> Base
-        addLerp (Base base) =
-            if (base.toGeneric.name == "foobar") then
-                base.appendEffect LerpFood
-            else
-                Base base
     in
+        l |> List.map addLerp
+
+
+view : List Base -> Html.Html Msg
+view l_ =
+    let
         -- Show result.
-        l_ |> List.map .string |> String.join " - " |> Html.text
+        text =
+            l_
+                |> List.map applyEffects
+                |> List.map .string
+                |> String.join " - "
+    in
+        Html.div [ Html.Events.onClick NoOp ] [ Html.text text ]
