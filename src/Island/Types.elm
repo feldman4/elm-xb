@@ -54,7 +54,7 @@ type Material
 
 
 
--- type Object = Basic BasicObject | Motion MotionObject
+-- OBJECTS
 
 
 type alias Object =
@@ -88,6 +88,10 @@ type alias GenericObject a =
 
 type Effects a
     = Effects (List (GenericObject a -> GenericObject a))
+
+
+
+-- NEXT
 
 
 {-| For rendering

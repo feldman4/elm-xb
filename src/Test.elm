@@ -17,12 +17,20 @@ type Effect
     | FoodEffect
 
 
+{-| Don't really have access to effects. Sure would be nice if you did.
+Constructor lets you put raw effect functions in. Afterwards you need to use
+.appendEffect since objects all look the same from outside. Appended effects
+could be viewed and copied, like copying an animation from parent to child.
+-}
 type alias Object =
     { toGeneric : Generic
     , effects : Lazy Base
-    , string :
-        String
-    , addEffect : Effect -> Base
+    , string : String
+    , appendEffect :
+        Effect -> Base
+        -- , prependEffect : Effect -> Base
+        -- , clearEffects : Base
+        -- , viewAppendedEffects : List (Effect -> Base)
     }
 
 
@@ -77,7 +85,7 @@ foo data effects =
             { toGeneric = toGeneric data
             , effects = lazyEffects
             , string = foodString data
-            , addEffect = foo data << (++) effects << fooEffects
+            , appendEffect = foo data << (++) effects << fooEffects
             }
 
 
@@ -115,7 +123,7 @@ generic data effects =
         stringForm =
             "name:" ++ .name (toGeneric data)
 
-        addEffect effect =
+        appendEffect effect =
             case effect of
                 _ ->
                     generic data effects
@@ -124,7 +132,7 @@ generic data effects =
             { toGeneric = toGeneric data
             , effects = lazyEffects generic data effects
             , string = stringForm
-            , addEffect = addEffect
+            , appendEffect = appendEffect
             }
 
 
@@ -137,7 +145,7 @@ bar data effects =
             ]
                 |> String.join ", "
 
-        addEffect effect =
+        appendEffect effect =
             case effect of
                 _ ->
                     bar data effects
@@ -146,7 +154,7 @@ bar data effects =
             { toGeneric = toGeneric data
             , effects = lazyEffects bar data effects
             , string = stringForm
-            , addEffect = addEffect
+            , appendEffect = appendEffect
             }
 
 
@@ -160,7 +168,7 @@ foobar data effects =
             ]
                 |> String.join ", "
 
-        addEffect effect =
+        appendEffect effect =
             case effect of
                 LerpFood ->
                     foobar data (effects ++ [ foodLerp2 ])
@@ -172,7 +180,7 @@ foobar data effects =
             { toGeneric = toGeneric data
             , effects = lazyEffects foobar data effects
             , string = stringForm
-            , addEffect = addEffect
+            , appendEffect = appendEffect
             }
 
 
@@ -229,7 +237,7 @@ applyEffects (Base x) =
 
 
 {-| Use like:
-Base |> addEffect (UpdateFood 100)
+Base |> appendEffect (UpdateFood 100)
 
 Wouldn't it be nice to write:
  {(Base) | food = 100}
@@ -238,9 +246,9 @@ You can do UpdateFood to something that doesn't have .food and it just
 does nothing. Should generate a type error instead. Could tie the type of Base
 to allowed effects, but then can't use one Effect on multiple types.
 -}
-addEffect : Effect -> Base -> Base
-addEffect effect (Base x) =
-    x.addEffect effect
+appendEffect : Effect -> Base -> Base
+appendEffect effect (Base x) =
+    x.appendEffect effect
 
 
 main : Html.Html msg
@@ -248,13 +256,13 @@ main =
     let
         preFoo =
             foo { name = "foo", food = 0 } [ foodLerp2, foodLerp2 ]
-                |> addEffect (UpdateFood 100)
+                |> appendEffect (UpdateFood 100)
 
         -- Fill a list with "derived instances".
         l : List Base
         l =
             [ preFoo
-            , bar { name = "bar", drink = 0, fuckyou = "yes" } [ inkDrink2, inkDrink2 ]
+            , bar { name = "bar", drink = 0, randomField = "yes" } [ inkDrink2, inkDrink2 ]
             , foobar { name = "foobar", food = 0, drink = 0 } [ inkDrink2 ]
             ]
 
@@ -264,7 +272,7 @@ main =
         addLerp : Base -> Base
         addLerp (Base base) =
             if (base.toGeneric.name == "foobar") then
-                base.addEffect LerpFood
+                base.appendEffect LerpFood
             else
                 Base base
     in
