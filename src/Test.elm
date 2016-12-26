@@ -7,21 +7,46 @@ import String
 import Lazy exposing (Lazy)
 
 
-type Base
-    = Base Object
+{-| Adaptation of https://github.com/Dobiasd/articles/blob/master/from_oop_to_fp_-_inheritance_and_the_expression_problem.md
 
+The main benefit is defining update/display functions in just one place (class
+constructor). The downside is that you can't directly pattern match on created
+objects and can't read/write the internal data except via the interface. You can
+pattern match on the `.class` attribute but you have to trust it's accurate and
+you don't simplify the resulting object type. You could get the constructor from
+a concrete class this way, but what for?
 
-type Effect
-    = DrinkInk
-    | LerpFood
-    | UpdateFood Int
-    | FoodEffect
+Introducing an Effect union type lets us represent a chain of functions that
+update objects as a list of Effects. Any Effect can go on any class. Effects can
+be viewed and replaced using `.toGeneric.effects` and `.replaceEffects.` They
+can be applied using `Lazy.force .doEffects`.
 
+Effects represent one step in an update rule. An alternative would be to have
+global update rules applied to every object (e.g., `object |> physics dt`), with
+a special flag to indicate if an object should be bypassed, like `object |>
+applyIfActive (physics dt)`. We have a choice to retain effects after applying
+them or not. `classEffects : Effect -> Maybe (Class -> Class)` or 'classEffects
+: Effect -> Maybe ((Class->Class), Maybe Effect)'. Persistent effects can retain
+memory via parameters, e.g., `type Effect = GradualShrinkBy Easing Factor | ...
+`. Effects requiring the model could be described by
 
-{-| Don't really have access to effects. Sure would be nice if you did.
-Constructor lets you put raw effect functions in. Afterwards you need to use
-.appendEffect since objects all look the same from outside. Appended effects
-could be viewed and copied, like copying an animation from parent to child.
+```
+type Effect = ModelEffect ModelEffect | SimpleEffect SimpleEffect
+type ModelEffect = Physics Model | ` and
+effects can be evaluated by `doEffectsWithModel : Lazy (Model -> Base) ``
+
+matrix of decisions: EFFECTS x CLASSES
+would be nice to only allow effects that a class supports
+naive: new effect type for every class
+better?: shared type variable between class and effect
+better?: `type Object = {effects = List (Object -> Object)}`
+
+Afterwards you can use
+.replaceEffects since objects all look the same from outside. Effects are
+visible in debugger under .toGeneric and can be copied to another object. There
+is no guarantee they pattern match and do anything. It might be better to have
+safe copying that is type aware (but you would need more increasingly large copy
+functions as the number of classes increases).
 
 Compare to regular pattern matching.
 
@@ -33,8 +58,27 @@ truth -- effects act by mapping apply or applyWithModel over effects for each
 object.
 3. Easy to remove effects.
 -}
+type Base
+    = Base Object
+
+
+type Effect
+    = DrinkInk
+    | LerpFood
+    | UpdateFood Int
+    | FoodEffect
+
+
+type ObjectClass
+    = Foo (Food Generic -> Object)
+    | Bar
+    | Foobar (Dinner Generic -> Object)
+    | GenericClass (Generic -> Object)
+
+
 type alias Object =
     { toGeneric : Generic
+    , class : ObjectClass
     , string : String
     , doEffects : DoEffects
     , replaceEffects :
@@ -135,6 +179,7 @@ generic data =
         , doEffects = DoEffects lazyEffects
         , replaceEffects = ReplaceEffects (makeReplaceEffects generic data)
         , string = stringForm
+        , class = GenericClass generic
         }
 
 
@@ -152,6 +197,7 @@ foo data =
         , doEffects = DoEffects lazyEffects
         , replaceEffects = ReplaceEffects (makeReplaceEffects foo data)
         , string = foodString data
+        , class = Foo foo
         }
 
 
@@ -183,6 +229,7 @@ bar data =
         , doEffects = DoEffects lazyEffects
         , replaceEffects = ReplaceEffects (makeReplaceEffects bar data)
         , string = stringForm
+        , class = Bar
         }
 
 
@@ -218,6 +265,7 @@ foobar data =
         , doEffects = DoEffects lazyEffects
         , string = stringForm
         , replaceEffects = ReplaceEffects (makeReplaceEffects foobar data)
+        , class = Foobar foobar
         }
 
 
@@ -243,24 +291,6 @@ local memory that is not part of the model/object, could
 a) return new effect, i.e., (Base, Maybe Effect)
 b) when apply effects, remove all effects and add any new ones.
 -}
-
-
-
--- inkDrink : { a | name : String, drink : Int } -> Base
--- inkDrink data =
---     { data | drink = data.drink + 1 } |> (flip bar) []
---
---
--- foodLerp : { a | name : String, food : Int } -> Base
--- foodLerp data =
---     { data | food = data.food + 1 } |> (flip foo) []
--- big time update rule
--- bigTimeUpdateRule objects model =
---   let
---     warmUp effects = effects |> List.map
--- want to store Effects and apply them
-
-
 apply : (Object -> a) -> Base -> a
 apply f (Base x) =
     f x

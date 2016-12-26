@@ -51,6 +51,7 @@ type Action
     | Resize Window.Size
     | DragMsg Drag.Msg
     | Drag ( Int, Int )
+    | ButtonChange ( Bool, Button )
 
 
 eyeLevel : Float
@@ -95,6 +96,19 @@ init =
 -- UPDATE
 
 
+mapActions : Model a -> List Action -> ( Model a, Cmd Action )
+mapActions model actions =
+    let
+        fold a ( m, a1 ) =
+            let
+                ( m2, a2 ) =
+                    update a m
+            in
+                ( m2, Cmd.batch [ a1, a2 ] )
+    in
+        List.foldl fold (model ! []) actions
+
+
 update : Action -> Model a -> ( Model a, Cmd Action )
 update action model =
     case action of
@@ -104,10 +118,26 @@ update action model =
         GamepadChange change ->
             case change of
                 Just gamepadRaw ->
-                    { model | gamepad = gamepadRaw |> broil } ! []
+                    -- ugly, conversion from Gamepad field to Button
+                    let
+                        newModel =
+                            { model | gamepad = gamepadRaw |> broil }
+
+                        f ( x, y ) =
+                            if ((x model.gamepad) /= (x newModel.gamepad)) then
+                                Just (ButtonChange ( x newModel.gamepad |> .pressed, y ))
+                            else
+                                Nothing
+                    in
+                        buttonActions
+                            |> List.filterMap f
+                            |> mapActions newModel
 
                 Nothing ->
                     model ! []
+
+        ButtonChange msg ->
+            model ! []
 
         Resize size ->
             let
@@ -156,19 +186,32 @@ update action model =
 port gamepad : (Maybe GamepadRaw -> msg) -> Sub msg
 
 
-type alias Button =
+port gamepadButton : (( Bool, String ) -> msg) -> Sub msg
+
+
+type Button
+    = A
+    | B
+
+
+type alias ButtonInfo =
     { pressed : Bool, value : Float }
 
 
 type alias GamepadRaw =
-    { axes : List Float, buttons : List Button }
+    { axes : List Float, buttons : List ButtonInfo }
 
 
 type alias Gamepad =
-    { x : Float, y : Float, up : Float, right : Float, a : Button, b : Button }
+    { x : Float, y : Float, up : Float, right : Float, a : ButtonInfo, b : ButtonInfo }
 
 
-defaultButton : Button
+buttonActions : List ( Gamepad -> ButtonInfo, Button )
+buttonActions =
+    [ ( .a, A ), ( .b, B ) ]
+
+
+defaultButton : ButtonInfo
 defaultButton =
     { pressed = False, value = 0 }
 
@@ -375,6 +418,11 @@ angleBetween : Vec3 -> Vec3 -> Float
 angleBetween a b =
     dot (normalize a) (normalize b)
         |> Basics.acos
+
+
+foldla : a -> List (a -> a) -> a
+foldla acc fs =
+    List.foldl (\f acc -> f acc) acc fs
 
 
 

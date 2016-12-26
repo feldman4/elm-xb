@@ -3,10 +3,22 @@ module Island.Types exposing (..)
 import Math.Vector3 as V3 exposing (vec3, Vec3)
 import Math.Vector4 as V4 exposing (vec4, Vec4)
 import Math.Matrix4 as M4 exposing (Mat4)
-import WebGL exposing (Texture)
+import WebGL exposing (Texture, Error)
 import Minimum
 import Frame
 import EveryDict
+import Time exposing (Time)
+
+
+type Action
+    = MinAction Minimum.Action
+    | TextureError Error
+    | TextureLoaded ( NamedTexture, Texture )
+    | WaterIndicator ( ( Float, Float ), List Float )
+
+
+
+-- RENDERING
 
 
 type Thing
@@ -54,131 +66,11 @@ type Material
 
 
 
--- OBJECTS
--- type Cell
---     = Cell Core
--- myList : List (AllObjects {})
-
-
-myList : List (AllObjects (RigidSomething {}))
-myList =
-    let
-        a =
-            { go = 3
-            , effects2 = []
-            , nodes = []
-            }
-
-        b =
-            { go = 3
-            , effects2 = []
-            , nodes = []
-            , name = "fuck you"
-            }
-    in
-        [ RigidSomething (RigidObject a)
-        , RigidSomething (RigidNamedObject b)
-        , FuckYouObject
-        ]
-
-
-
--- filterMyList : List (RigidObject a)
-
-
-filterMyList : List (RigidSomething {})
-filterMyList =
-    let
-        f object =
-            case object of
-                RigidSomething x ->
-                    [ x ]
-
-                _ ->
-                    []
-
-        g object =
-            case object of
-                RigidObject x ->
-                    RigidObject { x | effects2 = [] }
-
-                RigidNamedObject x ->
-                    RigidNamedObject { x | effects2 = [] }
-    in
-        myList |> List.concatMap f |> List.map g
-
-
-type AllObjects a
-    = RigidSomething a
-    | NonRigidSomething a
-    | FuckYouObject
-
-
-type RigidSomething a
-    = RigidObject (RigidObject a)
-    | RigidNamedObject (RigidNamedObject a)
-
-
-type AllEffect
-    = Move ( Int, Int )
-    | Rotate Int
-
-
-type alias RigidObject a =
-    GO (Rigid { a | effects2 : List RigidEffect })
-
-
-type alias RigidNamedObject a =
-    GO (Rigid { a | name : String, effects2 : List RigidNamedEffect })
-
-
-type RigidNamedEffect
-    = NamedEffect NamedEffect
-    | RigidEffect RigidEffect
+-- OBJECTS, EFFECTS, INTERACTIONS
 
 
 type NamedEffect
-    = Rename String
-
-
-type RigidEffect
-    = RigidMove ( Int, Int )
-    | RigidRotate Int
-
-
-type alias GO a =
-    { a | go : Int }
-
-
-updateRigidNamed : RigidNamedObject a -> RigidNamedEffect -> RigidNamedObject a
-updateRigidNamed object effect =
-    case effect of
-        NamedEffect eff ->
-            case eff of
-                Rename string ->
-                    object
-
-        RigidEffect eff ->
-            rotate object
-
-
-updateRigid : RigidObject a -> RigidEffect -> RigidObject a
-updateRigid object effect =
-    case effect of
-        RigidMove ( x, y ) ->
-            object
-
-        RigidRotate theta ->
-            rotate object
-
-
-rotate : { b | go : Int } -> { b | go : Int }
-rotate object =
-    { object | go = 4 }
-
-
-type alias Object =
-    GenericObject {}
+    = Control
 
 
 type alias Particle =
@@ -193,21 +85,37 @@ type alias Rigid a =
     { a | nodes : List Particle }
 
 
-type alias GenericObject a =
-    { a
-        | drawable : Thing
-        , material : Material
-        , frame :
-            Frame.Frame
-        , scale :
-            Vec3
-            -- doesn't account for scaling, can just multiply Mat4
-        , effects : Effects a
+type alias Object =
+    { drawable : Maybe Thing
+    , material : Material
+    , frame :
+        Frame.Frame
+    , scale :
+        Vec3
+        -- doesn't account for scaling, can just multiply Mat4
+    , effects : List NamedEffect
+    , velocity : Maybe Vec3
     }
 
 
-type Effects a
-    = Effects (List (GenericObject a -> GenericObject a))
+type alias RenderableObject =
+    { drawable : Thing
+    , material : Material
+    , frame : Frame.Frame
+    , scale : Vec3
+    }
+
+
+type alias Effect =
+    Object -> ( Object, Maybe NamedEffect )
+
+
+type alias Interaction =
+    Model -> Model
+
+
+type NamedInteraction
+    = Select
 
 
 
@@ -237,9 +145,8 @@ type alias IndexedMeshPQ =
 
 type alias Modeled =
     { objects : List Object
-    , sea : IndexedMeshPQ
-    , gridSea : IndexedMeshPQ
     , textures : EveryDict.EveryDict NamedTexture Texture
+    , interactions : List NamedInteraction
     }
 
 

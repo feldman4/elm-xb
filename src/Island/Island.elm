@@ -5,9 +5,9 @@ import Html.Attributes exposing (style, height, width)
 import WebGL exposing (Renderable, Shader, Texture, Error)
 import Minimum
 import Island.Types exposing (..)
-import Island.Geometry exposing (..)
 import Island.Render exposing (..)
 import Island.Things exposing (..)
+import Island.Effects exposing (applyEffects, applyInteractions)
 import Task
 import EveryDict
 
@@ -18,7 +18,7 @@ main =
         { init = init
         , view = view
         , subscriptions = subscriptions
-        , update = update
+        , update = (\a m -> applyInteractions a m |> update a)
         }
 
 
@@ -26,7 +26,7 @@ init : ( Model, Cmd Action )
 init =
     let
         objects =
-            [ initOcean, face0, face1, initBoat, initSeaSphere, initLightCube ]
+            [ initOcean, face0, face1, initBoat, initSeaSphere, initLightCube, initAvatar ]
 
         textureActions =
             [ Crate, Thwomp, NormalMap, DisplacementMap ]
@@ -52,8 +52,7 @@ init =
                     )
     in
         { objects = objects
-        , sea = [] |> addPQ
-        , gridSea = [] |> addPQ
+        , interactions = [ Select ]
         , person = model.person
         , keys = model.keys
         , gamepad = model.gamepad
@@ -65,13 +64,6 @@ init =
             ! ([ action ] ++ textureActions)
 
 
-type Action
-    = MinAction Minimum.Action
-    | TextureError Error
-    | TextureLoaded ( NamedTexture, Texture )
-    | WaterIndicator (List Float)
-
-
 update : Action -> Model -> ( Model, Cmd Action )
 update action model =
     case action of
@@ -79,8 +71,21 @@ update action model =
             let
                 ( newModel, minAction ) =
                     Minimum.update act model
+
+                newModel2 =
+                    case act of
+                        Minimum.Animate dt ->
+                            -- unleash the beast
+                            { newModel
+                                | objects =
+                                    model.objects
+                                        |> List.map (applyEffects model dt)
+                            }
+
+                        _ ->
+                            newModel
             in
-                ( newModel
+                ( newModel2
                 , Cmd.batch
                     [ Cmd.map MinAction minAction
                     ]
@@ -93,15 +98,11 @@ update action model =
             { model | textures = EveryDict.insert name texture model.textures } ! []
 
         WaterIndicator heights ->
-            { model | objects = model.objects |> List.map (setWaterFrame heights) } ! []
+            -- { model | objects = model.objects |> List.map (setWaterFrame heights) } ! []
+            model ! []
 
 
-setWaterFrame : List Float -> GenericObject a -> GenericObject a
-setWaterFrame heights object =
-    object
-
-
-port waterIndicator : (List Float -> msg) -> Sub msg
+port waterIndicator : (( ( Float, Float ), List Float ) -> msg) -> Sub msg
 
 
 port askWaterIndicator : ( Int, Int ) -> Cmd msg
@@ -121,46 +122,13 @@ view model =
         window =
             model.window
 
-        dummyFilter ( name, texture ) =
-            case name of
-                NormalMap ->
-                    [ texture ]
-
-                DisplacementMap ->
-                    [ texture ]
-
-                _ ->
-                    []
-
-        textureEntity =
-            let
-                dummyTextures =
-                    EveryDict.toList model.textures
-                        |> List.concatMap dummyFilter
-            in
-                case dummyTextures of
-                    tex0 :: tex1 :: [] ->
-                        [ renderDummyTextures ( tex0, tex1 ) ]
-
-                    tex0 :: [] ->
-                        [ renderDummyTextures ( tex0, tex0 ) ]
-
-                    [] ->
-                        []
-
-                    _ ->
-                        let
-                            a =
-                                Debug.crash "More than 2 dummy textures."
-                        in
-                            []
-
         entities =
             (model.objects
+                |> List.filterMap renderMaybe
                 |> List.map (renderObject model)
             )
+                ++ (textureEntity model)
 
-        -- ++ textureEntity
         message =
             [ "Enjoy your stay on the island.", "dt: " ++ toString window.dt ]
 
@@ -193,6 +161,3 @@ view model =
                 ]
                 messageText
             ]
-
-
-port check : String -> Cmd msg

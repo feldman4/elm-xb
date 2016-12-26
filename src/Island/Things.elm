@@ -6,166 +6,10 @@ import WebGL exposing (Renderable, Shader, Texture, Error)
 import Island.Types exposing (..)
 import Meshes exposing (icosphere, subdivide)
 import Island.Geometry exposing (..)
+import Minimum exposing (defaultPerson)
 import Frame
 import Vector
 import Quaternion
-
-
-type alias Obj a =
-    { a | effects : Effects2 a, flag : Bool }
-
-
-type Effects2 a
-    = Effects2 (List (Obj a -> Obj a))
-
-
-type alias Named a =
-    { a | name : String }
-
-
-type alias Mover a =
-    { a | pVelocity : Vec3 }
-
-
-type alias NamedMover =
-    Named (Mover {})
-
-
-rename : Obj { a | name : String } -> Obj { a | name : String }
-rename obj =
-    { obj | name = "Bob", flag = False }
-
-
-speedUp : Obj { a | pVelocity : Vec3 } -> Obj { a | pVelocity : Vec3 }
-speedUp obj =
-    { obj | pVelocity = V3.scale 2 obj.pVelocity }
-
-
-thingsToDo : List (Obj NamedMover -> Obj NamedMover)
-thingsToDo =
-    [ speedUp, rename ]
-
-
-object1 : Obj (Named (Mover {}))
-object1 =
-    { pVelocity = vec3 0 0 0, name = "object1", flag = True, effects = Effects2 thingsToDo }
-
-
-object2 : Obj (Named {})
-object2 =
-    { name = "object1", flag = True, effects = Effects2 [ rename ] }
-
-
-type TestObject
-    = NM (Obj (Named (Mover {})))
-    | N (Obj (Named {}))
-
-
-objectsToMap : List TestObject
-objectsToMap =
-    [ NM object1, N object2 ]
-
-
-genericF : Obj a -> Obj a
-genericF obj =
-    { obj | flag = True }
-
-
-mapGeneric : TestObject -> TestObject
-mapGeneric obj =
-    case obj of
-        NM object ->
-            NM (genericF object)
-
-        N object ->
-            N (genericF object)
-
-
-
--- updateNamed : (Obj (Named a) -> Obj (Named a)) -> TestObject -> TestObject
--- updateNamed f obj =
---     case obj of
---         NM object ->
---             (f object)
---
---         N object ->
---             (f object)
--- a =
---     updateNamed rename (NM object1)
--- attempt a generic update
-
-
-doubleVelocity : TestObject -> TestObject
-doubleVelocity object =
-    case object of
-        NM obj ->
-            NM { obj | pVelocity = V3.scale 2 obj.pVelocity }
-
-        N obj ->
-            N obj
-
-
-
---
--- type Effect
---     = FooEffect FooFunction
---     | BarEffect BarFunction
---
---
--- type FooFunction
---     = FooInc
---     | FooDec
---
---
--- type BarFunction
---     = BarInc
---     | BarDec
---
---
--- type alias Food =
---     { foo : Int, effects : List Effect }
---
---
--- type alias Bard =
---     { bar : Int, effects : List Effect }
---
---
--- myObject =
---     { effects = [ FooEffect FooInc, BarEffect BarInc ], foo = 3 }
---
---
--- type alias GenericObject a =
---     { a | drawable : Thing, material : Material, frame : Frame.Frame, scale : Vec3 }
---
---
--- do : (GenericObject a -> GenericObject a) -> GenericObject a -> GenericObject a
--- do f object =
---     case f of
---         FooInc ->
---             { object | foo = object.foo + 1 }
---
---         FooDec ->
---             { object | foo = object.foo - 1 }
---
---
--- doBar : BarFunction -> GenericObject Bard -> GenericObject Bard
--- doBar f object =
---     case f of
---         BarInc ->
---             { object | bar = object.bar + 1 }
---
---         BarDec ->
---             { object | bar = object.bar - 1 }
---
---
--- applyEffect : GenericObject a -> Effect a -> GenericObject a
--- applyEffect object effect =
---     case effect of
---         FooEffect f ->
---             doFoo f object
---
---         BarEffect b ->
---             doBar object
 
 
 lightSource : Vec3
@@ -177,20 +21,39 @@ type alias URL =
     String
 
 
+
+-- {-| serve locally with python -m SimpleHTTPServer
+-- -}
+-- textureURL : NamedTexture -> String
+-- textureURL name =
+--     case name of
+--         Crate ->
+--             "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/woodCrate.jpg"
+--
+--         Thwomp ->
+--             "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/thwomp_face.jpg"
+--
+--         DisplacementMap ->
+--             "http://i144.photobucket.com/albums/r196/salombo_photos/AB%20Seasons%20Game%20Icons/ABS_SPIcon.jpg"
+--
+--         NormalMap ->
+--             "http://i144.photobucket.com/albums/r196/salombo_photos/AB%20Seasons%20Game%20Icons/ABS_GGGLIcon.jpg"
+
+
 textureURL : NamedTexture -> String
 textureURL name =
     case name of
         Crate ->
-            "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/woodCrate.jpg"
+            "file:///Users/feldman/packages/elm-xb/resources/woodCrate.jpg"
 
         Thwomp ->
-            "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/thwomp_face.jpg"
+            "file:///Users/feldman/packages/elm-xb/resources/thwomp_face.jpg"
 
         DisplacementMap ->
-            "http://i144.photobucket.com/albums/r196/salombo_photos/AB%20Seasons%20Game%20Icons/ABS_SPIcon.jpg"
+            "file:///Users/feldman/packages/elm-xb/resources/angry_patrick.jpg"
 
         NormalMap ->
-            "http://i144.photobucket.com/albums/r196/salombo_photos/AB%20Seasons%20Game%20Icons/ABS_GGGLIcon.jpg"
+            "file:///Users/feldman/packages/elm-xb/resources/angry_picnic.jpg"
 
 
 getThing : Thing -> WebGL.Drawable Attribute
@@ -228,7 +91,7 @@ initLightCubeDrawable =
 initLightCube : Object
 initLightCube =
     { defaultObject
-        | drawable = LightCube
+        | drawable = Just LightCube
         , material = Color (vec4 1 1 1 1)
         , frame = Frame.identity |> Frame.extrinsicNudge (Vector.fromVec3 lightSource)
     }
@@ -240,18 +103,28 @@ initLightCube =
 
 defaultObject : Object
 defaultObject =
-    { drawable = Boat
+    { drawable = Just Boat
     , material = Color (vec4 0.7 0.7 0.7 1.0)
     , frame = Frame.identity
     , scale = vec3 1 1 1
-    , effects = Effects []
+    , effects = []
+    , velocity = Nothing
+    }
+
+
+initAvatar : Object
+initAvatar =
+    { defaultObject
+        | drawable = Nothing
+        , velocity = Just (vec3 0 0 0)
+        , effects = [ Control ]
     }
 
 
 initPlane : Object
 initPlane =
     { defaultObject
-        | drawable = Ocean
+        | drawable = Just Ocean
         , material = Color (vec4 0.7 0.9 0.3 1.0)
     }
 
@@ -264,23 +137,33 @@ initBoatDrawable =
 initBoat : Object
 initBoat =
     { defaultObject
-        | drawable = Boat
+        | drawable = Just Boat
         , material = Color (vec4 1 0.5 0 1)
         , frame =
             Frame.identity
                 |> Frame.extrinsicNudge (Vector.fromVec3 (vec3 2 0 1))
                 |> Frame.intrinsicRotate (Quaternion.yRotation 2 |> Quaternion.compose (Quaternion.zRotation 0))
+        , velocity = Just (vec3 0 0 0)
+        , effects = []
     }
 
 
 initOcean : Object
 initOcean =
     { defaultObject
-        | drawable = Ocean
+        | drawable = Just Ocean
         , material = OceanTexture ( DisplacementMap, NormalMap )
         , frame =
             Frame.identity |> Frame.intrinsicNudge (Vector.zAxis |> Vector.scale -4)
         , scale = vec3 20 20 0.5
+    }
+
+
+initSeaSphere : Object
+initSeaSphere =
+    { defaultObject
+        | drawable = Just SeaSphere
+        , material = Color (vec4 0.2 0.2 0.8 0.5)
     }
 
 
@@ -297,14 +180,6 @@ initOceanDrawable =
             centroid sea |> V3.scale -1
     in
         offset sea x |> eachMeshPoint (V3.scale (1.0 / (toFloat resolution))) |> indexMesh |> meshToTriangle
-
-
-initSeaSphere : Object
-initSeaSphere =
-    { defaultObject
-        | drawable = SeaSphere
-        , material = Color (vec4 0.2 0.2 0.8 0.5)
-    }
 
 
 initSeaSphereDrawable : WebGL.Drawable Attribute
@@ -367,7 +242,7 @@ initFaceDrawable =
 face0 : Object
 face0 =
     { defaultObject
-        | drawable = Face
+        | drawable = Just Face
         , material = MaterialTexture NormalMap
         , frame =
             Frame.identity
@@ -379,7 +254,7 @@ face0 =
 face1 : Object
 face1 =
     { defaultObject
-        | drawable = Face
+        | drawable = Just Face
         , material = MaterialTexture DisplacementMap
         , frame =
             Frame.identity

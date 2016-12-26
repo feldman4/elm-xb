@@ -1,6 +1,5 @@
 module Island.Render exposing (..)
 
-import Math.Vector3 as V3
 import Math.Matrix4 as M4
 import Math.Vector4 as V4 exposing (vec4, Vec4)
 import WebGL exposing (Renderable, Shader, Texture, Error)
@@ -14,7 +13,7 @@ import EveryDict
 
 {-| Render an BasicObject with a single light source, choosing shaders based on Material.
 -}
-renderObject : Minimum.Model { u | textures : EveryDict.EveryDict NamedTexture Texture } -> Object -> Renderable
+renderObject : Minimum.Model { u | textures : EveryDict.EveryDict NamedTexture Texture } -> RenderableObject -> Renderable
 renderObject { window, person, textures } object =
     let
         perspectiveMatrix =
@@ -94,6 +93,23 @@ renderObject { window, person, textures } object =
                             defaultRender
 
 
+{-| Only render if we have Just drawable
+-}
+renderMaybe : Object -> Maybe RenderableObject
+renderMaybe object =
+    case object.drawable of
+        Just drawable ->
+            Just
+                { drawable = drawable
+                , material = object.material
+                , frame = object.frame
+                , scale = object.scale
+                }
+
+        _ ->
+            Nothing
+
+
 {-| Load textures in order, using dummy render call. After this executes
 textures should be bound sequentially to gl.TEXTURE
 -}
@@ -107,3 +123,42 @@ renderDummyTextures ( tex0, tex1 ) =
             WebGL.Triangle []
     in
         WebGL.render dummyVertexShader dummyFragmentShader drawable uniforms
+
+
+{-| Makes the dummy render call. This function must be modified if textures
+exposed to JS WebGL are modified.
+-}
+textureEntity : Model -> List Renderable
+textureEntity model =
+    let
+        dummyFilter ( name, texture ) =
+            case name of
+                NormalMap ->
+                    [ texture ]
+
+                DisplacementMap ->
+                    [ texture ]
+
+                _ ->
+                    []
+
+        dummyTextures =
+            EveryDict.toList model.textures
+                |> List.concatMap dummyFilter
+    in
+        case dummyTextures of
+            tex0 :: tex1 :: [] ->
+                [ renderDummyTextures ( tex0, tex1 ) ]
+
+            tex0 :: [] ->
+                [ renderDummyTextures ( tex0, tex0 ) ]
+
+            [] ->
+                []
+
+            _ ->
+                let
+                    a =
+                        Debug.crash "More than 2 dummy textures."
+                in
+                    []
