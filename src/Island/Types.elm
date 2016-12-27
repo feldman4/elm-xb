@@ -9,6 +9,18 @@ import Frame exposing (Frame)
 import EveryDict
 
 
+type NamedInteraction
+    = Select
+    | Deselect
+    | Follow Follow
+
+
+type NamedEffect
+    = Control
+    | MainControl
+    | View
+
+
 type Action
     = MinAction Minimum.Action
     | TextureError Error
@@ -101,18 +113,6 @@ type alias RenderableObject =
     }
 
 
-type NamedInteraction
-    = Select
-    | Deselect
-    | Follow
-
-
-type NamedEffect
-    = Control
-    | MainControl
-    | View
-
-
 
 -- | Vision
 --
@@ -120,9 +120,9 @@ type NamedEffect
 
 {-| Orbital: to get perspective,
 -}
-type Camera
+type Follow
     = FPS
-    | Orbital Frame
+    | Orbital Float
 
 
 type alias Interaction =

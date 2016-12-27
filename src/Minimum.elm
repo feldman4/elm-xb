@@ -19,7 +19,7 @@ type alias Model a =
     { a
         | keys : Keys
         , gamepad : Gamepad
-        , window : { size : Window.Size, dt : Float }
+        , window : Window.Size
         , person : Person
         , clock : Time.Time
         , dragModel : Drag.Model
@@ -79,8 +79,8 @@ init : ( Model {}, Cmd Action )
 init =
     ( { person = defaultPerson
       , keys = Keys False False False False False
-      , gamepad = Gamepad 0 0 0 0 defaultButton defaultButton
-      , window = { size = Window.Size 0 0, dt = 0 }
+      , gamepad = Gamepad 0 0 0 0 defaultButton defaultButton defaultButton defaultButton
+      , window = Window.Size 0 0
       , dragModel = Drag.initialModel
       , clock = 0
       }
@@ -114,7 +114,7 @@ update action model =
             { model | keys = updateKeys msg model.keys } ! []
 
         GamepadChange change ->
-            case change of
+            case (Debug.log "change" change) of
                 Just gamepadRaw ->
                     { model | gamepad = gamepadRaw |> broil } ! []
 
@@ -125,28 +125,19 @@ update action model =
             model ! []
 
         Resize size ->
-            let
-                window =
-                    model.window
-            in
-                { model | window = { window | size = size } } ! []
+            { model | window = size } ! []
 
         Animate dt ->
-            let
-                window =
-                    model.window
-            in
-                { model
-                    | person =
-                        model.person
-                            |> move (directions model.keys model.gamepad)
-                            |> turn (gamepadLook model.gamepad)
-                            |> gravity (dt / 500)
-                            |> physics (dt / 500)
-                    , window = { window | dt = dt }
-                    , clock = model.clock + dt
-                }
-                    ! []
+            { model
+                | person =
+                    model.person
+                        |> move (directions model.keys model.gamepad)
+                        |> turn (gamepadLook model.gamepad)
+                        |> gravity (dt / 500)
+                        |> physics (dt / 500)
+                , clock = model.clock + dt
+            }
+                ! []
 
         Drag ( x, y ) ->
             { model
@@ -183,6 +174,12 @@ toButton name =
         "B" ->
             Just B
 
+        "LT" ->
+            Just LT
+
+        "RT" ->
+            Just RT
+
         _ ->
             Nothing
 
@@ -190,6 +187,8 @@ toButton name =
 type Button
     = A
     | B
+    | LT
+    | RT
 
 
 type alias ButtonInfo =
@@ -201,12 +200,20 @@ type alias GamepadRaw =
 
 
 type alias Gamepad =
-    { x : Float, y : Float, up : Float, right : Float, a : ButtonInfo, b : ButtonInfo }
+    { x : Float
+    , y : Float
+    , up : Float
+    , right : Float
+    , a : ButtonInfo
+    , b : ButtonInfo
+    , lt : ButtonInfo
+    , rt : ButtonInfo
+    }
 
 
 buttonActions : List ( Gamepad -> ButtonInfo, Button )
 buttonActions =
-    [ ( .a, A ), ( .b, B ) ]
+    [ ( .a, A ), ( .b, B ), ( .lt, LT ), ( .rt, RT ) ]
 
 
 defaultButton : ButtonInfo
@@ -221,30 +228,39 @@ broil gamepadRaw =
             xs |> List.drop n |> List.head
 
         x =
-            gamepadRaw.axes |> index 0 |> Maybe.withDefault 0 |> outerClamp
+            gamepadRaw.axes |> index 0 |> Maybe.withDefault 0 |> outerClamp 0.2
 
         y =
-            gamepadRaw.axes |> index 1 |> Maybe.withDefault 0 |> outerClamp
+            gamepadRaw.axes |> index 1 |> Maybe.withDefault 0 |> outerClamp 0.2
 
         up =
-            gamepadRaw.axes |> index 2 |> Maybe.withDefault 0 |> outerClamp
+            gamepadRaw.axes |> index 2 |> Maybe.withDefault 0 |> outerClamp 0.2
 
         right =
-            gamepadRaw.axes |> index 3 |> Maybe.withDefault 0 |> outerClamp
+            gamepadRaw.axes |> index 3 |> Maybe.withDefault 0 |> outerClamp 0.2
 
         a =
-            gamepadRaw.buttons |> index 0 |> Maybe.withDefault defaultButton
+            gamepadRaw.buttons |> index 0 |> Maybe.withDefault defaultButton |> outerClampButton 0.2
 
         b =
-            gamepadRaw.buttons |> index 1 |> Maybe.withDefault defaultButton
+            gamepadRaw.buttons |> index 1 |> Maybe.withDefault defaultButton |> outerClampButton 0.2
 
-        outerClamp x =
-            if (x < -0.2) || (x > 0.2) then
+        lt =
+            gamepadRaw.buttons |> index 6 |> Maybe.withDefault defaultButton |> outerClampButton 0.2
+
+        rt =
+            gamepadRaw.buttons |> index 7 |> Maybe.withDefault defaultButton |> outerClampButton 0.2
+
+        outerClamp r x =
+            if (x < -r) || (x > r) then
                 x
             else
                 0
+
+        outerClampButton r b =
+            { b | value = outerClamp r b.value }
     in
-        { x = x, y = y, up = up, right = right, a = a, b = b }
+        { x = x, y = y, up = up, right = right, a = a, b = b, lt = lt, rt = rt }
 
 
 gamepadLook : Gamepad -> { dx : Float, dy : Float }

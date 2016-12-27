@@ -19,7 +19,7 @@ renderObject { window, camera, textures } object =
         -- perspectiveMatrix =
         --     Minimum.perspective ( window.size.width, window.size.height ) person
         perspectiveMatrix =
-            perspective ( window.size.width, window.size.height ) camera
+            perspective ( window.width, window.height ) camera
 
         drawable =
             getThing object.drawable
@@ -170,13 +170,13 @@ perspective : ( Int, Int ) -> Frame -> Mat4
 perspective ( w, h ) frame =
     let
         origin =
-            Frame.transformInto frame (Vector 0 0 0) |> V.toVec3
+            frame.position |> V.toVec3
 
         gaze =
-            Frame.transformInto frame (Vector 1 0 0) |> V.toVec3
+            Frame.transformOutOf frame (Vector 1 0 0) |> V.toVec3
 
         up =
-            Frame.transformInto frame (Vector 0 0 1) |> V.toVec3
+            (Vector 0 0 1) |> V.toVec3
     in
         M4.mul (M4.makePerspective 90 (toFloat w / toFloat h) 0.01 100)
             (M4.makeLookAt origin gaze up)

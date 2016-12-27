@@ -4,32 +4,61 @@ import Island.Types exposing (..)
 import Minimum as M exposing (angleBetween, foldla, toButton)
 import Frame exposing (Frame)
 import Vector as V exposing (Vector)
-import Quaternion exposing (Quaternion)
+import Quaternion as Q exposing (Quaternion)
 import Math.Vector3 as V3 exposing (Vec3, vec3)
 import Time exposing (Time)
 
 
--- {-| Type mystery:
--- type X = A Int | B
--- a = A 3
--- b = A
--- c = B
--- same : X -> X -> Bool
--- same = ???
--- -}
--- filterInteraction : Action -> Interaction -> Maybe Interaction
--- filterInteraction action interaction =
---     case ( action, interaction.valid ) of
---         ( MinAction x, MinAction y ) ->
---             Just interaction
---
---         _ ->
---             Nothing
--- {-| Determines if an Action will trigger an Interaction. Could implement a
--- filtering function that depends on the Model instead. -}
--- minActionInteractions =
---     EveryDict.fromList <|
---         [(Select, )]
+effectManager : NamedEffect -> Model -> Time -> Object -> ( Object, Maybe NamedEffect )
+effectManager namedEffect model dt object =
+    case namedEffect of
+        Control ->
+            ( { object | frame = object.frame |> Frame.setPosition (Frame.transformOutOf model.camera (Vector 2 0 0)) }
+            , Just Control
+            )
+
+        MainControl ->
+            ( { object | frame = control model dt object.frame }
+            , Just MainControl
+            )
+
+        View ->
+            ( object, Just View )
+
+
+interactionManager : Action -> NamedInteraction -> Maybe Interaction
+interactionManager action name =
+    case ( name, action ) of
+        ( Select, MinAction (M.ButtonChange ( bool, button )) ) ->
+            case button |> toButton of
+                Just (M.B) ->
+                    if bool then
+                        Just select
+                    else
+                        Nothing
+
+                _ ->
+                    Nothing
+
+        ( Deselect, MinAction (M.ButtonChange ( bool, button )) ) ->
+            case button |> toButton of
+                Just (M.B) ->
+                    if bool then
+                        Debug.log "deselected" (Just deselect)
+                    else
+                        Nothing
+
+                _ ->
+                    Nothing
+
+        ( Follow FPS, MinAction (M.Animate dt) ) ->
+            Just followFPS
+
+        ( Follow (Orbital theta), MinAction (M.Animate dt) ) ->
+            Just (followOrbital theta dt)
+
+        _ ->
+            Nothing
 
 
 {-| Add Control Effect to objects within angular and distance tolerance.
@@ -39,29 +68,39 @@ select : Model -> ( Model, Maybe NamedInteraction )
 select model =
     let
         ( maxAngle, maxDistance ) =
-            ( 0.2, 3 )
+            ( 0.4, 10 )
 
         control object =
             let
-                x =
-                    V3.sub (V.toVec3 object.frame.position) model.person.position
+                position =
+                    Frame.transformInto model.camera object.frame.position
+
+                a =
+                    Debug.log "position" ( object.drawable, position )
+
+                angle =
+                    angleBetween (position |> V.toVec3) V3.i
 
                 valid =
-                    ((angleBetween model.person.gaze x) < maxAngle) && (V3.length x < maxDistance)
+                    (angle < maxAngle) && (V.length position < maxDistance)
             in
                 case object.velocity of
                     Just x ->
-                        ( { object | effects = object.effects ++ [ Control ] }, True )
+                        if valid && not (List.member MainControl object.effects) then
+                            Debug.log "selected" { object | effects = object.effects ++ [ Control ] }
+                        else
+                            object
 
                     Nothing ->
-                        ( object, False )
+                        object
 
+        results : List Object
         results =
             model.objects |> List.map control
 
-        -- bad, fix
+        -- checks if any changed
         didSomething =
-            results |> List.tail |> Maybe.withDefault [] |> List.any Tuple.second
+            results |> List.any (\x -> List.member Control x.effects)
 
         new =
             if didSomething then
@@ -69,7 +108,7 @@ select model =
             else
                 Just Select
     in
-        ( { model | objects = results |> List.map Tuple.first }, new )
+        ( { model | objects = results }, new )
 
 
 deselect : Model -> ( Model, Maybe NamedInteraction )
@@ -89,48 +128,48 @@ deselect model =
         ( { model | objects = newObjects }, Just Select )
 
 
-follow : Model -> ( Model, Maybe NamedInteraction )
-follow model =
+followFPS : Model -> ( Model, Maybe NamedInteraction )
+followFPS model =
     let
         following =
             model.objects |> List.filter (\x -> List.member View x.effects)
 
+        -- follow the first object with a View effect
         camera =
             following |> List.head |> Maybe.map .frame |> Maybe.withDefault Frame.identity
     in
-        ( { model | camera = camera }, Just Follow )
+        ( { model | camera = camera }, Just (Follow FPS) )
 
 
-interactionManager : Action -> NamedInteraction -> Maybe Interaction
-interactionManager action name =
-    case ( name, action ) of
-        ( Select, MinAction (M.ButtonChange ( bool, button )) ) ->
-            case button |> toButton of
-                Just (M.B) ->
-                    if bool then
-                        Debug.log "selected" (Just select)
-                    else
-                        Nothing
+{-| -}
+followOrbital : Float -> Float -> Model -> ( Model, Maybe NamedInteraction )
+followOrbital theta dt model =
+    let
+        newTheta =
+            0.0033 * dt * (model.gamepad.lt.value - model.gamepad.rt.value) + theta
 
-                _ ->
-                    Nothing
+        following =
+            model.objects |> List.filter (\x -> List.member View x.effects)
 
-        ( Deselect, MinAction (M.ButtonChange ( bool, button )) ) ->
-            case button |> toButton of
-                Just (M.B) ->
-                    if bool then
-                        Debug.log "deselected" (Just deselect)
-                    else
-                        Nothing
+        target =
+            following
+                |> List.head
+                |> Maybe.map (\x -> x.frame.position)
+                |> Maybe.withDefault (Vector 0 0 0)
 
-                _ ->
-                    Nothing
+        offset =
+            Vector -3 0 1.5 |> Q.rotate (Q.zRotation newTheta)
 
-        ( Follow, MinAction (M.Animate dt) ) ->
-            Just follow
+        orientation =
+            Q.rotationFor V.xAxis (V.scale -1 offset)
 
-        _ ->
-            Nothing
+        camera =
+            { position = offset
+            , orientation = orientation
+            }
+                |> Frame.extrinsicNudge target
+    in
+        ( { model | camera = camera }, Just (Follow (Orbital newTheta)) )
 
 
 {-| If only it could be this simple
@@ -162,26 +201,6 @@ applyInteractions action model =
         { finalModel | interactions = finalInts }
 
 
-effectManager : NamedEffect -> Model -> Time -> Object -> ( Object, Maybe NamedEffect )
-effectManager namedEffect model dt object =
-    case namedEffect of
-        Control ->
-            ( { object | frame = control model dt object.frame }
-            , Just MainControl
-            )
-
-        MainControl ->
-            ( { object | frame = control model dt object.frame }
-            , Just MainControl
-            )
-
-        View ->
-            ( object, Just View )
-
-
-{-| Hack to reuse update rule from M.
-Two axis control doesn't fully determine quaternion, so x entry is zero.
--}
 control : Model -> Time -> Frame -> Frame
 control model dt frame =
     frame
@@ -189,29 +208,39 @@ control model dt frame =
         |> turn (M.gamepadLook model.gamepad)
 
 
-{-| Uses typical XY directions to update frame. Ignore
+{-| Uses typical XY directions to update frame. Ignore z.
 -}
 move : { x : Float, y : Float, z : Float } -> Frame -> Frame
 move { x, y, z } frame =
     let
         gaze =
-            Frame.transformInto frame V.xAxis
+            { position = Vector 0 0 0, orientation = frame.orientation }
+                |> (flip Frame.transformOutOf) V.xAxis
 
         forward =
             Vector (V.getX gaze) (V.getY gaze) 0
                 |> V.normalize
                 |> Maybe.withDefault (Vector 0 0 0)
+
+        sidelong =
+            { position = Vector 0 0 0, orientation = frame.orientation }
+                |> (flip Frame.transformOutOf) V.yAxis
+
+        sideways =
+            Vector (V.getX sidelong) (V.getY sidelong) 0
+                |> V.normalize
+                |> Maybe.withDefault (Vector 0 0 0)
     in
         frame
-            |> Frame.extrinsicNudge (V.scale x forward)
-            |> Frame.intrinsicNudge (V.scale y V.yAxis)
+            |> Frame.extrinsicNudge (V.scale x forward |> V.scale 0.1)
+            |> Frame.extrinsicNudge (V.scale y sideways |> V.scale 0.1)
 
 
 turn : { dx : Float, dy : Float } -> Frame -> Frame
 turn { dx, dy } frame =
     frame
-        |> Frame.extrinsicRotate (Quaternion.zRotation dy)
-        |> Frame.intrinsicRotate (Quaternion.yRotation dx)
+        |> Frame.extrinsicRotate (Q.zRotation (1.5 * dx))
+        |> Frame.intrinsicRotate (Q.yRotation (-1.5 * dy))
 
 
 {-| Effects change the model and return a List Effect, allowing for persistence.
@@ -243,3 +272,22 @@ appendMaybe maybeX xs =
 
         Nothing ->
             xs
+
+
+
+-- {-| Type mystery:
+-- type X = A Int | B
+-- a = A 3
+-- b = A
+-- c = B
+-- same : X -> X -> Bool
+-- same = ???
+-- -}
+-- filterInteraction : Action -> Interaction -> Maybe Interaction
+-- filterInteraction action interaction =
+--     case ( action, interaction.valid ) of
+--         ( MinAction x, MinAction y ) ->
+--             Just interaction
+--
+--         _ ->
+--             Nothing

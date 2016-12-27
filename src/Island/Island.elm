@@ -19,15 +19,27 @@ main =
         { init = init
         , view = view
         , subscriptions = subscriptions
-        , update = (\a m -> applyInteractions a m |> update a)
+        , update = (\a m -> updater a m)
         }
+
+
+updater : Action -> Model -> ( Model, Cmd Action )
+updater a m =
+    let
+        ( m2, a2 ) =
+            update a m
+
+        m3 =
+            applyInteractions a m2
+    in
+        ( m3, a2 )
 
 
 init : ( Model, Cmd Action )
 init =
     let
         objects =
-            [ initAvatar, initOcean, face0, face1, initBoat, initSeaSphere, initLightCube ]
+            [ initAvatar, initOcean, face0, face1, initSeaSphere, initLightCube, initBoat ]
 
         textureActions =
             [ Crate, Thwomp, NormalMap, DisplacementMap ]
@@ -53,7 +65,7 @@ init =
                     )
     in
         { objects = objects
-        , interactions = [ Select, Follow ]
+        , interactions = [ Select, Follow (Orbital 0) ]
         , person = model.person
         , keys = model.keys
         , gamepad = model.gamepad
@@ -132,7 +144,7 @@ view model =
                 ++ (textureEntity model)
 
         message =
-            [ "Enjoy your stay on the island.", "dt: " ++ toString window.dt ]
+            [ "Enjoy your stay on the island." ]
 
         messageText =
             List.map text message
@@ -140,14 +152,14 @@ view model =
     in
         div
             [ style
-                [ ( "width", toString window.size.width ++ "px" )
-                , ( "height", toString window.size.height ++ "px" )
+                [ ( "width", toString window.width ++ "px" )
+                , ( "height", toString window.height ++ "px" )
                 , ( "position", "relative" )
                 ]
             ]
             [ WebGL.toHtml
-                [ width window.size.width
-                , height window.size.height
+                [ width window.width
+                , height window.height
                 , style [ ( "display", "block" ) ]
                 ]
                 entities
