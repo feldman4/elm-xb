@@ -6,7 +6,6 @@ import WebGL exposing (Renderable, Shader, Texture, Error)
 import Island.Types exposing (..)
 import Meshes exposing (icosphere, subdivide)
 import Island.Geometry exposing (..)
-import Minimum exposing (defaultPerson)
 import Frame
 import Vector
 import Quaternion
@@ -117,7 +116,7 @@ initAvatar =
     { defaultObject
         | drawable = Nothing
         , velocity = Just (vec3 0 0 0)
-        , effects = [ Control ]
+        , effects = [ MainControl, View ]
     }
 
 
@@ -155,7 +154,7 @@ initOcean =
         , material = OceanTexture ( DisplacementMap, NormalMap )
         , frame =
             Frame.identity |> Frame.intrinsicNudge (Vector.zAxis |> Vector.scale -4)
-        , scale = vec3 20 20 0.5
+        , scale = vec3 20 20 2
     }
 
 

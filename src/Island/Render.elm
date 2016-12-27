@@ -1,23 +1,25 @@
 module Island.Render exposing (..)
 
-import Math.Matrix4 as M4
+import Math.Matrix4 as M4 exposing (Mat4)
 import Math.Vector4 as V4 exposing (vec4, Vec4)
 import WebGL exposing (Renderable, Shader, Texture, Error)
-import Minimum
 import Island.Types exposing (..)
 import Island.Shaders exposing (..)
-import Frame
+import Frame exposing (Frame)
+import Vector as V exposing (Vector)
 import Island.Things exposing (..)
 import EveryDict
 
 
 {-| Render an BasicObject with a single light source, choosing shaders based on Material.
 -}
-renderObject : Minimum.Model { u | textures : EveryDict.EveryDict NamedTexture Texture } -> RenderableObject -> Renderable
-renderObject { window, person, textures } object =
+renderObject : Model -> RenderableObject -> Renderable
+renderObject { window, camera, textures } object =
     let
+        -- perspectiveMatrix =
+        --     Minimum.perspective ( window.size.width, window.size.height ) person
         perspectiveMatrix =
-            Minimum.perspective ( window.size.width, window.size.height ) person
+            perspective ( window.size.width, window.size.height ) camera
 
         drawable =
             getThing object.drawable
@@ -29,7 +31,7 @@ renderObject { window, person, textures } object =
             { perspective = perspectiveMatrix
             , transform = transform
             , light = lightSource
-            , viewer = person.position
+            , viewer = camera.position |> V.toVec3
             , color = vec4 0.8 0.8 0.8 1
             }
                 |> WebGL.render colorVertexShader colorFragmentShader drawable
@@ -41,7 +43,7 @@ renderObject { window, person, textures } object =
                         { perspective = perspectiveMatrix
                         , transform = transform
                         , light = lightSource
-                        , viewer = person.position
+                        , viewer = camera.position |> V.toVec3
                         , color = color
                         }
                 in
@@ -55,7 +57,7 @@ renderObject { window, person, textures } object =
                                 { perspective = perspectiveMatrix
                                 , transform = transform
                                 , light = lightSource
-                                , viewer = person.position
+                                , viewer = camera.position |> V.toVec3
                                 , texture = texture
                                 }
                         in
@@ -80,7 +82,7 @@ renderObject { window, person, textures } object =
                                     { perspective = perspectiveMatrix
                                     , transform = transform
                                     , light = lightSource
-                                    , viewer = person.position
+                                    , viewer = camera.position |> V.toVec3
                                     , color = vec4 0.9 0.9 1.0 1.0
                                     , displacement = dTexture
                                     , normals = nTexture
@@ -162,3 +164,19 @@ textureEntity model =
                         Debug.crash "More than 2 dummy textures."
                 in
                     []
+
+
+perspective : ( Int, Int ) -> Frame -> Mat4
+perspective ( w, h ) frame =
+    let
+        origin =
+            Frame.transformInto frame (Vector 0 0 0) |> V.toVec3
+
+        gaze =
+            Frame.transformInto frame (Vector 1 0 0) |> V.toVec3
+
+        up =
+            Frame.transformInto frame (Vector 0 0 1) |> V.toVec3
+    in
+        M4.mul (M4.makePerspective 90 (toFloat w / toFloat h) 0.01 100)
+            (M4.makeLookAt origin gaze up)

@@ -3,10 +3,8 @@ port module Minimum exposing (..)
 -- adapted from elm-community/webgl crate example
 
 import Keyboard exposing (KeyCode)
-import Math.Vector3 exposing (..)
-import Math.Vector3 as V3
-import Math.Matrix4 exposing (..)
-import Math.Matrix4 as M4
+import Math.Vector3 as V3 exposing (..)
+import Math.Matrix4 as M4 exposing (..)
 import Task exposing (Task)
 import Time
 import AnimationFrame
@@ -51,7 +49,7 @@ type Action
     | Resize Window.Size
     | DragMsg Drag.Msg
     | Drag ( Int, Int )
-    | ButtonChange ( Bool, Button )
+    | ButtonChange ( Bool, String )
 
 
 eyeLevel : Float
@@ -118,25 +116,12 @@ update action model =
         GamepadChange change ->
             case change of
                 Just gamepadRaw ->
-                    -- ugly, conversion from Gamepad field to Button
-                    let
-                        newModel =
-                            { model | gamepad = gamepadRaw |> broil }
-
-                        f ( x, y ) =
-                            if ((x model.gamepad) /= (x newModel.gamepad)) then
-                                Just (ButtonChange ( x newModel.gamepad |> .pressed, y ))
-                            else
-                                Nothing
-                    in
-                        buttonActions
-                            |> List.filterMap f
-                            |> mapActions newModel
+                    { model | gamepad = gamepadRaw |> broil } ! []
 
                 Nothing ->
                     model ! []
 
-        ButtonChange msg ->
+        ButtonChange ( state, name ) ->
             model ! []
 
         Resize size ->
@@ -186,7 +171,20 @@ update action model =
 port gamepad : (Maybe GamepadRaw -> msg) -> Sub msg
 
 
-port gamepadButton : (( Bool, String ) -> msg) -> Sub msg
+port buttonChange : (( Bool, String ) -> msg) -> Sub msg
+
+
+toButton : String -> Maybe Button
+toButton name =
+    case name of
+        "A" ->
+            Just A
+
+        "B" ->
+            Just B
+
+        _ ->
+            Nothing
 
 
 type Button
@@ -268,6 +266,7 @@ subscriptions model =
     , Window.resizes Resize
     , Drag.subscriptions DragMsg model.dragModel
     , gamepad GamepadChange
+    , buttonChange ButtonChange
     ]
         |> Sub.batch
 

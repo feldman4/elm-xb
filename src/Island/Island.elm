@@ -8,6 +8,7 @@ import Island.Types exposing (..)
 import Island.Render exposing (..)
 import Island.Things exposing (..)
 import Island.Effects exposing (applyEffects, applyInteractions)
+import Frame
 import Task
 import EveryDict
 
@@ -26,7 +27,7 @@ init : ( Model, Cmd Action )
 init =
     let
         objects =
-            [ initOcean, face0, face1, initBoat, initSeaSphere, initLightCube, initAvatar ]
+            [ initAvatar, initOcean, face0, face1, initBoat, initSeaSphere, initLightCube ]
 
         textureActions =
             [ Crate, Thwomp, NormalMap, DisplacementMap ]
@@ -52,7 +53,7 @@ init =
                     )
     in
         { objects = objects
-        , interactions = [ Select ]
+        , interactions = [ Select, Follow ]
         , person = model.person
         , keys = model.keys
         , gamepad = model.gamepad
@@ -60,6 +61,7 @@ init =
         , clock = model.clock
         , dragModel = model.dragModel
         , textures = EveryDict.empty
+        , camera = Frame.identity
         }
             ! ([ action ] ++ textureActions)
 

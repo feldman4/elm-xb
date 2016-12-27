@@ -5,9 +5,8 @@ import Math.Vector4 as V4 exposing (vec4, Vec4)
 import Math.Matrix4 as M4 exposing (Mat4)
 import WebGL exposing (Texture, Error)
 import Minimum
-import Frame
+import Frame exposing (Frame)
 import EveryDict
-import Time exposing (Time)
 
 
 type Action
@@ -69,10 +68,6 @@ type Material
 -- OBJECTS, EFFECTS, INTERACTIONS
 
 
-type NamedEffect
-    = Control
-
-
 type alias Particle =
     { position : Vec3, mass : Float }
 
@@ -85,14 +80,14 @@ type alias Rigid a =
     { a | nodes : List Particle }
 
 
+{-|
+- .velocity is for objects that can be moved (matched by physics)
+-}
 type alias Object =
     { drawable : Maybe Thing
     , material : Material
-    , frame :
-        Frame.Frame
-    , scale :
-        Vec3
-        -- doesn't account for scaling, can just multiply Mat4
+    , frame : Frame.Frame
+    , scale : Vec3
     , effects : List NamedEffect
     , velocity : Maybe Vec3
     }
@@ -106,16 +101,36 @@ type alias RenderableObject =
     }
 
 
-type alias Effect =
-    Object -> ( Object, Maybe NamedEffect )
+type NamedInteraction
+    = Select
+    | Deselect
+    | Follow
+
+
+type NamedEffect
+    = Control
+    | MainControl
+    | View
+
+
+
+-- | Vision
+--
+
+
+{-| Orbital: to get perspective,
+-}
+type Camera
+    = FPS
+    | Orbital Frame
 
 
 type alias Interaction =
-    Model -> Model
+    Model -> ( Model, Maybe NamedInteraction )
 
 
-type NamedInteraction
-    = Select
+type alias Effect =
+    Object -> ( Object, Maybe NamedEffect )
 
 
 
@@ -147,6 +162,7 @@ type alias Modeled =
     { objects : List Object
     , textures : EveryDict.EveryDict NamedTexture Texture
     , interactions : List NamedInteraction
+    , camera : Frame
     }
 
 
