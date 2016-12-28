@@ -6,6 +6,7 @@ import Math.Matrix4 as M4 exposing (Mat4)
 import WebGL exposing (Texture, Error)
 import Minimum
 import Frame exposing (Frame)
+import Vector exposing (Vector)
 import EveryDict
 
 
@@ -13,19 +14,40 @@ type NamedInteraction
     = Select
     | Deselect
     | Follow Follow
+    | RequestOcean
 
 
 type NamedEffect
     = Control
-    | MainControl
+    | MainControl Float
+      -- speed
     | View
+    | Floating FloatingInfo
+    | Gravity Float
+
+
+
+-- g
 
 
 type Action
     = MinAction Minimum.Action
     | TextureError Error
     | TextureLoaded ( NamedTexture, Texture )
-    | WaterIndicator ( ( Float, Float ), List Float )
+    | WaterIndicator ( String, ( Float, Float, Float, Float ) )
+
+
+type alias FloatingInfo =
+    { coordinates : ( Float, Float )
+    , moved : Bool
+    , requested : Bool
+    , height : Float
+    }
+
+
+defaultFloating : FloatingInfo
+defaultFloating =
+    { coordinates = ( 0, 0 ), height = 1, moved = False, requested = False }
 
 
 
@@ -101,7 +123,7 @@ type alias Object =
     , frame : Frame.Frame
     , scale : Vec3
     , effects : List NamedEffect
-    , velocity : Maybe Vec3
+    , velocity : Maybe Vector
     }
 
 
@@ -126,7 +148,7 @@ type Follow
 
 
 type alias Interaction =
-    Model -> ( Model, Maybe NamedInteraction )
+    Model -> ( Model, Maybe NamedInteraction, Cmd Action )
 
 
 type alias Effect =

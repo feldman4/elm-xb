@@ -117,7 +117,8 @@ void main () {
   // vec3 position = a_position + texture2D(u_displacementMap, a_coordinates).rgb * (u_geometrySize / u_size);
   vec3 displacedPosition = position;
   // WHICH COMPONENTS OF DISPLACEMENT TO USE?
-  displacedPosition.z = position.z + length(texture2D(displacement, position.xy ));
+  // displacedPosition.z = position.z + length(texture2D(displacement, position.xy ));
+  displacedPosition.z = position.z + texture2D(displacement, position.xy ).y;
 
   vec4 worldPosition = transform * vec4(displacedPosition, 1.0);
   vec4 worldNormal = transform * vec4(texture2D(normals, position.xy).xyz, 1.0);
@@ -177,7 +178,7 @@ void main () {
 
   float distance = length(sources[1] - sources[0]);
   float dropoff = (1.0 / pow(distance, 2.0)) * 400.0;
-  dropoff = clamp(dropoff, 0.0, 1.0);
+  dropoff = clamp(dropoff, 0.4, 1.0);
 
   // these can be color-dependent
   float kd = 1.0;

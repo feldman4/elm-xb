@@ -2,13 +2,33 @@ module Island.Render exposing (..)
 
 import Math.Matrix4 as M4 exposing (Mat4)
 import Math.Vector4 as V4 exposing (vec4, Vec4)
-import WebGL exposing (Renderable, Shader, Texture, Error)
+import WebGL exposing (..)
 import Island.Types exposing (..)
 import Island.Shaders exposing (..)
 import Frame exposing (Frame)
 import Vector as V exposing (Vector)
 import Island.Things exposing (..)
 import EveryDict
+
+
+config : List FunctionCall
+config =
+    let
+        blendFunc =
+            BlendFunc ( DstColor, DstColor )
+
+        depthFunc =
+            DepthFunc Always
+
+        blendEquation =
+            BlendEquation Subtract
+    in
+        [ Enable Blend, Enable DepthTest ]
+
+
+
+--, depthFunc, blendEquation, blendFunc ]
+--, ,  blendFunc, blendEquation ]
 
 
 {-| Render an BasicObject with a single light source, choosing shaders based on Material.
@@ -27,6 +47,9 @@ renderObject { window, camera, textures } object =
         transform =
             M4.mul (object.frame |> Frame.toMat4) (M4.makeScale object.scale)
 
+        render =
+            WebGL.renderWithConfig config
+
         defaultRender =
             { perspective = perspectiveMatrix
             , transform = transform
@@ -34,7 +57,7 @@ renderObject { window, camera, textures } object =
             , viewer = camera.position |> V.toVec3
             , color = vec4 0.8 0.8 0.8 1
             }
-                |> WebGL.render colorVertexShader colorFragmentShader drawable
+                |> render colorVertexShader colorFragmentShader drawable
     in
         case object.material of
             Color color ->
@@ -47,7 +70,7 @@ renderObject { window, camera, textures } object =
                         , color = color
                         }
                 in
-                    WebGL.render colorVertexShader colorFragmentShader drawable uniforms
+                    render colorVertexShader colorFragmentShader drawable uniforms
 
             MaterialTexture name ->
                 case EveryDict.get name textures of
@@ -61,7 +84,7 @@ renderObject { window, camera, textures } object =
                                 , texture = texture
                                 }
                         in
-                            WebGL.render textureVertexShader textureFragmentShader drawable uniforms
+                            render textureVertexShader textureFragmentShader drawable uniforms
 
                     Nothing ->
                         -- object is missing texture
@@ -83,12 +106,12 @@ renderObject { window, camera, textures } object =
                                     , transform = transform
                                     , light = lightSource
                                     , viewer = camera.position |> V.toVec3
-                                    , color = vec4 0.9 0.9 1.0 1.0
+                                    , color = vec4 0.9 0.9 1.0 0.3
                                     , displacement = dTexture
                                     , normals = nTexture
                                     }
                             in
-                                WebGL.render oceanVertexShader colorFragmentShader drawable uniforms
+                                render oceanVertexShader colorFragmentShader drawable uniforms
 
                         _ ->
                             -- missing one or more ocean textures

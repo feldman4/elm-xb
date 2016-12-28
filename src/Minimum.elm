@@ -114,7 +114,7 @@ update action model =
             { model | keys = updateKeys msg model.keys } ! []
 
         GamepadChange change ->
-            case (Debug.log "change" change) of
+            case change of
                 Just gamepadRaw ->
                     { model | gamepad = gamepadRaw |> broil } ! []
 

@@ -7,7 +7,7 @@ import Minimum
 import Island.Types exposing (..)
 import Island.Render exposing (..)
 import Island.Things exposing (..)
-import Island.Effects exposing (applyEffects, applyInteractions)
+import Island.Effects exposing (applyEffects, applyInteractions, updateFloating)
 import Frame
 import Task
 import EveryDict
@@ -23,23 +23,26 @@ main =
         }
 
 
+{-| Should interactions always be applied after Action? Can have two kinds if
+necessary.
+-}
 updater : Action -> Model -> ( Model, Cmd Action )
 updater a m =
     let
         ( m2, a2 ) =
             update a m
 
-        m3 =
+        ( m3, a3 ) =
             applyInteractions a m2
     in
-        ( m3, a2 )
+        ( m3, Cmd.batch [ a2, a3 ] )
 
 
 init : ( Model, Cmd Action )
 init =
     let
         objects =
-            [ initAvatar, initOcean, face0, face1, initSeaSphere, initLightCube, initBoat ]
+            [ initAvatar, initOcean, face0, face1, initLightCube, initBoat ]
 
         textureActions =
             [ Crate, Thwomp, NormalMap, DisplacementMap ]
@@ -65,7 +68,7 @@ init =
                     )
     in
         { objects = objects
-        , interactions = [ Select, Follow (Orbital 0) ]
+        , interactions = [ Select, Follow (Orbital 0), RequestOcean ]
         , person = model.person
         , keys = model.keys
         , gamepad = model.gamepad
@@ -111,15 +114,25 @@ update action model =
         TextureLoaded ( name, texture ) ->
             { model | textures = EveryDict.insert name texture model.textures } ! []
 
-        WaterIndicator heights ->
-            -- { model | objects = model.objects |> List.map (setWaterFrame heights) } ! []
-            model ! []
+        WaterIndicator ( coordinates, heights ) ->
+            let
+                ( a, b, c, d ) =
+                    heights
+
+                height =
+                    b
+
+                -- (a ^ 2 + b ^ 2 + c ^ 2 + d ^ 2) ^ (0.5)
+            in
+                { model
+                    | objects =
+                        model.objects
+                            |> List.map (updateFloating model coordinates height)
+                }
+                    ! []
 
 
-port waterIndicator : (( ( Float, Float ), List Float ) -> msg) -> Sub msg
-
-
-port askWaterIndicator : ( Int, Int ) -> Cmd msg
+port waterIndicator : (( String, ( Float, Float, Float, Float ) ) -> msg) -> Sub msg
 
 
 subscriptions : Model -> Sub Action

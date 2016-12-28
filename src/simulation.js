@@ -570,6 +570,17 @@ var Simulator = function (canvas) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.enable(gl.DEPTH_TEST);
 
+
+    };
+
+    this.getHeight = function (x, y, width, height) {
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, displacementMapFramebuffer);
+
+        var pixels = new Float32Array(width * height * 4);
+        gl.readPixels(x, y, width, height, gl.RGBA, gl.FLOAT, pixels);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return pixels;
     };
 
 };

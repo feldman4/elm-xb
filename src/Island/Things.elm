@@ -7,7 +7,7 @@ import Island.Types exposing (..)
 import Meshes exposing (icosphere, subdivide)
 import Island.Geometry exposing (..)
 import Frame
-import Vector
+import Vector exposing (Vector)
 import Quaternion
 
 
@@ -115,10 +115,11 @@ initAvatar : Object
 initAvatar =
     { defaultObject
         | drawable = Just Boat
-        , velocity = Just (vec3 0 0 0)
+        , velocity = Just (Vector 0 0 0)
         , scale = vec3 0.3 0.3 0.3
         , material = Color (vec4 0.7 0.7 0.9 1.0)
-        , effects = [ MainControl, View ]
+        , effects = [ MainControl 0.1, View, Gravity 0.00005, Floating defaultFloating ]
+        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 3 3 0)
     }
 
 
@@ -142,10 +143,13 @@ initBoat =
         , material = Color (vec4 1 0.5 0 1)
         , frame =
             Frame.identity
-            -- |> Frame.extrinsicNudge (Vector.fromVec3 (vec3 2 0 1))
+                |> Frame.extrinsicNudge (Vector 29 29 30)
             -- |> Frame.intrinsicRotate (Quaternion.yRotation 2 |> Quaternion.compose (Quaternion.zRotation 0))
-        , velocity = Just (vec3 0 0 0)
-        , effects = []
+        , velocity = Just (Vector 0 0 0)
+        , effects =
+            [-- Floating defaultFloating
+             -- , Gravity 0.001
+            ]
     }
 
 
@@ -156,7 +160,7 @@ initOcean =
         , material = OceanTexture ( DisplacementMap, NormalMap )
         , frame =
             Frame.identity |> Frame.intrinsicNudge (Vector.zAxis |> Vector.scale -4)
-        , scale = vec3 20 20 2
+        , scale = vec3 30 30 1
     }
 
 
@@ -176,11 +180,8 @@ initOceanDrawable =
 
         sea =
             makeGrid resolution resolution |> List.concatMap quadToTri
-
-        x =
-            centroid sea |> V3.scale -1
     in
-        offset sea x |> eachMeshPoint (V3.scale (1.0 / (toFloat resolution))) |> indexMesh |> meshToTriangle
+        sea |> eachMeshPoint (V3.scale (1.0 / (toFloat resolution))) |> indexMesh |> meshToTriangle
 
 
 initSeaSphereDrawable : WebGL.Drawable Attribute
