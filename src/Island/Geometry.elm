@@ -8,10 +8,12 @@ import List.Extra
 import Dict
 import Dict.Extra exposing (groupBy)
 import WebGL
+import Collision
+import Vector as V exposing (Vector)
 
 
-map3 : (a -> b) -> ( a, a, a ) -> ( b, b, b )
-map3 f ( a, b, c ) =
+map3T : (a -> b) -> ( a, a, a ) -> ( b, b, b )
+map3T f ( a, b, c ) =
     ( f a, f b, f c )
 
 
@@ -20,9 +22,18 @@ map3L f ( a, b, c ) =
     [ f a, f b, f c ]
 
 
+makeBounds : RawMesh -> Collision.Bounds
+makeBounds rawMesh =
+    let
+        toFace ( a, b, c ) =
+            Collision.face (V.fromVec3 a) (V.fromVec3 b) (V.fromVec3 c)
+    in
+        rawMesh |> List.map toFace |> Collision.create
+
+
 eachMeshPoint : (Vec3 -> Vec3) -> RawMesh -> RawMesh
 eachMeshPoint f mesh =
-    mesh |> List.map (map3 f)
+    mesh |> List.map (map3T f)
 
 
 addPQ : a -> PQ { mesh : a }
@@ -59,7 +70,7 @@ indexMesh mesh =
                 )
     in
         mesh
-            |> List.map (map3 getter)
+            |> List.map (map3T getter)
             |> List.map setter
 
 
@@ -67,7 +78,7 @@ indexMesh mesh =
 -- populateNeighbors : Mesh -> Mesh
 -- populateNeighbors mesh =
 --   let
---     meshEmpty = mesh |> List.map (map3 (\v -> {v | neighbors = []}))
+--     meshEmpty = mesh |> List.map (map3T (\v -> {v | neighbors = []}))
 --     dict =
 
 
@@ -108,7 +119,7 @@ useCornerNormals mesh =
             { a | normal = Dict.get a.index normDict |> Maybe.withDefault a.normal }
     in
         mesh
-            |> List.map (map3 setter)
+            |> List.map (map3T setter)
 
 
 invertNormals : RawMesh -> RawMesh
@@ -118,7 +129,7 @@ invertNormals mesh =
 
 invertIndexedNormals : Mesh -> Mesh
 invertIndexedNormals mesh =
-    mesh |> List.map (map3 (\a -> { a | normal = V3.scale -1 a.normal }))
+    mesh |> List.map (map3T (\a -> { a | normal = V3.scale -1 a.normal }))
 
 
 offset : RawMesh -> Vec3 -> RawMesh
@@ -191,7 +202,7 @@ meshToTriangle mesh =
             , normal = vertex.normal
             }
     in
-        mesh |> List.map (map3 toAttribute) |> WebGL.Triangle
+        mesh |> List.map (map3T toAttribute) |> WebGL.Triangle
 
 
 edgedMeshToTriangle : Mesh -> WebGL.Drawable EdgedVertex
@@ -238,4 +249,4 @@ edgedMeshToTriangle mesh =
                 , n6 = get 6
                 }
     in
-        mesh |> List.map (map3 toAttribute) |> WebGL.Triangle
+        mesh |> List.map (map3T toAttribute) |> WebGL.Triangle

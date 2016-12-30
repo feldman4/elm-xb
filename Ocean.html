@@ -47,7 +47,8 @@
             }
 
             function doRequestOcean() {
-              if (requests.length > 1) {console.log(requests.length)};
+              // log queue size
+              // if (requests.length > 1) {console.log(requests.length)};
               for (i = 0; i < requests.length; i++ ) {
                 args = requests.pop();
 
@@ -69,9 +70,9 @@
               simulator = new Simulator(canvas);
 
               window.setInterval(function(){
-               simulator.render(0.01);
+               simulator.render(0.015);
                doRequestOcean();
-             }, 10);
+             }, 15);
 
             }, 300);
 

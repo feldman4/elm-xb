@@ -9,11 +9,13 @@ import Island.Geometry exposing (..)
 import Frame
 import Vector exposing (Vector)
 import Quaternion
+import Task
+import Collision
 
 
 lightSource : Vec3
 lightSource =
-    vec3 0.0 0.0 20.0
+    vec3 0 0 10.0
 
 
 type alias URL =
@@ -23,43 +25,61 @@ type alias URL =
 
 -- {-| serve locally with python -m SimpleHTTPServer
 -- -}
--- textureURL : NamedTexture -> String
--- textureURL name =
---     case name of
---         Crate ->
---             "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/woodCrate.jpg"
---
---         Thwomp ->
---             "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/thwomp_face.jpg"
---
---         DisplacementMap ->
---             "http://i144.photobucket.com/albums/r196/salombo_photos/AB%20Seasons%20Game%20Icons/ABS_SPIcon.jpg"
---
---         NormalMap ->
---             "http://i144.photobucket.com/albums/r196/salombo_photos/AB%20Seasons%20Game%20Icons/ABS_GGGLIcon.jpg"
 
 
 textureURL : NamedTexture -> String
 textureURL name =
     case name of
         Crate ->
-            "file:///Users/feldman/packages/elm-xb/resources/woodCrate.jpg"
+            "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/woodCrate.jpg"
 
         Thwomp ->
-            "file:///Users/feldman/packages/elm-xb/resources/thwomp_face.jpg"
+            "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/thwomp_face.jpg"
 
         DisplacementMap ->
-            "file:///Users/feldman/packages/elm-xb/resources/angry_patrick.jpg"
+            "http://i144.photobucket.com/albums/r196/salombo_photos/AB%20Seasons%20Game%20Icons/ABS_SPIcon.jpg"
 
         NormalMap ->
-            "file:///Users/feldman/packages/elm-xb/resources/angry_picnic.jpg"
+            "http://i144.photobucket.com/albums/r196/salombo_photos/AB%20Seasons%20Game%20Icons/ABS_GGGLIcon.jpg"
+
+
+textureAction : NamedTexture -> Cmd Action
+textureAction name =
+    textureURL name
+        |> WebGL.loadTexture
+        |> Task.attempt
+            (\result ->
+                case result of
+                    Err err ->
+                        TextureError err
+
+                    Ok val ->
+                        TextureLoaded ( name, val )
+            )
+
+
+
+-- textureURL : NamedTexture -> String
+-- textureURL name =
+--     case name of
+--         Crate ->
+--             "file:///Users/feldman/packages/elm-xb/resources/woodCrate.jpg"
+--
+--         Thwomp ->
+--             "file:///Users/feldman/packages/elm-xb/resources/thwomp_face.jpg"
+--
+--         DisplacementMap ->
+--             "file:///Users/feldman/packages/elm-xb/resources/angry_patrick.jpg"
+--
+--         NormalMap ->
+--             "file:///Users/feldman/packages/elm-xb/resources/angry_picnic.jpg"
 
 
 getThing : Thing -> WebGL.Drawable Attribute
 getThing thing =
     case thing of
         Boat ->
-            initBoatDrawable
+            initBoatDrawable.drawable
 
         Face ->
             initFaceDrawable
@@ -72,6 +92,22 @@ getThing thing =
 
         Ocean ->
             initOceanDrawable
+
+        Island ->
+            initIslandDrawable.drawable
+
+
+getBounds : Thing -> Maybe Collision.Bounds
+getBounds thing =
+    case thing of
+        Island ->
+            Just initIslandDrawable.bounds
+
+        Boat ->
+            Just initBoatDrawable.bounds
+
+        _ ->
+            Nothing
 
 
 initLightCubeDrawable : WebGL.Drawable Attribute
@@ -97,7 +133,7 @@ initLightCube =
 
 
 
--- INIT
+-- OBJECT
 
 
 defaultObject : Object
@@ -118,8 +154,8 @@ initAvatar =
         , velocity = Just (Vector 0 0 0)
         , scale = vec3 0.3 0.3 0.3
         , material = Color (vec4 0.7 0.7 0.9 1.0)
-        , effects = [ MainControl 0.1, View, Gravity 0.00005, Floating defaultFloating ]
         , frame = Frame.identity |> Frame.extrinsicNudge (Vector 3 3 0)
+        , effects = [ MainControl 2, View, Gravity 0.1, Floating defaultFloating, Collide ]
     }
 
 
@@ -131,9 +167,14 @@ initPlane =
     }
 
 
-initBoatDrawable : WebGL.Drawable Attribute
-initBoatDrawable =
-    boat |> indexMesh |> meshToTriangle
+initIsland : Object
+initIsland =
+    { defaultObject
+        | drawable = Just Island
+        , material = Color (vec4 (170 / 255.0) (108 / 255.0) (57 / 255.0) 1.0)
+        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 0 0 -2)
+        , effects = [ Collide ]
+    }
 
 
 initBoat : Object
@@ -159,7 +200,8 @@ initOcean =
         | drawable = Just Ocean
         , material = OceanTexture ( DisplacementMap, NormalMap )
         , frame =
-            Frame.identity |> Frame.intrinsicNudge (Vector.zAxis |> Vector.scale -4)
+            Frame.identity
+                |> Frame.extrinsicNudge (Vector -15 -15 -4)
         , scale = vec3 30 30 1
     }
 
@@ -170,6 +212,45 @@ initSeaSphere =
         | drawable = Just SeaSphere
         , material = Color (vec4 0.2 0.2 0.8 0.5)
     }
+
+
+face0 : Object
+face0 =
+    { defaultObject
+        | drawable = Just Face
+        , material = MaterialTexture NormalMap
+        , frame =
+            Frame.identity
+                |> Frame.extrinsicNudge (Vector.fromVec3 (vec3 3 -2 1))
+                |> Frame.intrinsicRotate (Quaternion.yRotation 1.5)
+    }
+
+
+face1 : Object
+face1 =
+    { defaultObject
+        | drawable = Just Face
+        , material = MaterialTexture DisplacementMap
+        , frame =
+            Frame.identity
+                |> Frame.extrinsicRotate (Quaternion.yRotation 1.5)
+                |> Frame.extrinsicNudge (Vector.fromVec3 (vec3 3 2 1))
+    }
+
+
+
+-- DRAWABLE
+
+
+initBoatDrawable : BoundedDrawable Attribute
+initBoatDrawable =
+    let
+        bounds =
+            cube |> List.map (map3T (V3.scale 0.3)) |> makeBounds
+    in
+        { drawable = boat |> indexMesh |> meshToTriangle
+        , bounds = bounds
+        }
 
 
 initOceanDrawable : WebGL.Drawable Attribute
@@ -205,6 +286,30 @@ initSeaSphereDrawable =
         indexedMesh |> useCornerNormals |> meshToTriangle
 
 
+initIslandDrawable : BoundedDrawable Attribute
+initIslandDrawable =
+    let
+        mesh =
+            centroid island
+                |> V3.scale -1
+                |> offset island
+                |> List.map (map3T (V3.scale 8))
+    in
+        { drawable =
+            mesh
+                |> indexMesh
+                |> useCornerNormals
+                |> invertIndexedNormals
+                |> meshToTriangle
+        , bounds = makeBounds mesh
+        }
+
+
+initFaceDrawable : WebGL.Drawable Attribute
+initFaceDrawable =
+    face |> indexMesh |> meshToTriangle
+
+
 initCube : Mesh
 initCube =
     let
@@ -227,42 +332,6 @@ initCube =
 -- gridSeaMeshEdged : WebGL.Drawable EdgedVertex
 -- gridSeaMeshEdged =
 --     initSea |> eachMeshPoint (V3.scale 0.02) |> indexMesh |> edgedMeshToTriangle
-
-
-initIsland : RawMesh
-initIsland =
-    centroid island
-        |> V3.scale -1
-        |> offset island
-
-
-initFaceDrawable : WebGL.Drawable Attribute
-initFaceDrawable =
-    face |> indexMesh |> meshToTriangle
-
-
-face0 : Object
-face0 =
-    { defaultObject
-        | drawable = Just Face
-        , material = MaterialTexture NormalMap
-        , frame =
-            Frame.identity
-                |> Frame.extrinsicNudge (Vector.fromVec3 (vec3 3 -2 1))
-                |> Frame.intrinsicRotate (Quaternion.yRotation 1.5)
-    }
-
-
-face1 : Object
-face1 =
-    { defaultObject
-        | drawable = Just Face
-        , material = MaterialTexture DisplacementMap
-        , frame =
-            Frame.identity
-                |> Frame.extrinsicRotate (Quaternion.yRotation 1.5)
-                |> Frame.extrinsicNudge (Vector.fromVec3 (vec3 3 2 1))
-    }
 
 
 face : RawMesh

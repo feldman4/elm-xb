@@ -47,27 +47,33 @@ renderObject { window, camera, textures } object =
         transform =
             M4.mul (object.frame |> Frame.toMat4) (M4.makeScale object.scale)
 
+        normalMatrix =
+            object.frame
+                |> Frame.setPosition (Vector 0 0 0)
+                |> Frame.toMat4
+
         render =
             WebGL.renderWithConfig config
 
-        defaultRender =
+        defaultUniforms =
             { perspective = perspectiveMatrix
             , transform = transform
+            , normalMatrix = normalMatrix
             , light = lightSource
             , viewer = camera.position |> V.toVec3
             , color = vec4 0.8 0.8 0.8 1
             }
+
+        defaultRender =
+            defaultUniforms
                 |> render colorVertexShader colorFragmentShader drawable
     in
         case object.material of
             Color color ->
                 let
                     uniforms =
-                        { perspective = perspectiveMatrix
-                        , transform = transform
-                        , light = lightSource
-                        , viewer = camera.position |> V.toVec3
-                        , color = color
+                        { defaultUniforms
+                            | color = color
                         }
                 in
                     render colorVertexShader colorFragmentShader drawable uniforms
@@ -79,6 +85,7 @@ renderObject { window, camera, textures } object =
                             uniforms =
                                 { perspective = perspectiveMatrix
                                 , transform = transform
+                                , normalMatrix = normalMatrix
                                 , light = lightSource
                                 , viewer = camera.position |> V.toVec3
                                 , texture = texture
@@ -104,6 +111,7 @@ renderObject { window, camera, textures } object =
                                 uniforms =
                                     { perspective = perspectiveMatrix
                                     , transform = transform
+                                    , normalMatrix = normalMatrix
                                     , light = lightSource
                                     , viewer = camera.position |> V.toVec3
                                     , color = vec4 0.9 0.9 1.0 0.3

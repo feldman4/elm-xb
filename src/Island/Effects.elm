@@ -1,12 +1,15 @@
 port module Island.Effects exposing (..)
 
 import Island.Types exposing (..)
+import Island.Things exposing (getBounds)
 import Minimum as M exposing (angleBetween, foldla, toButton)
 import Frame exposing (Frame)
+import Math.Vector4 as V4 exposing (vec4)
 import Vector as V exposing (Vector)
 import Quaternion as Q exposing (Quaternion)
 import Math.Vector3 as V3 exposing (Vec3, vec3)
 import Time exposing (Time)
+import Collision
 
 
 effectManager : NamedEffect -> Model -> Time -> Object -> ( Object, Maybe NamedEffect )
@@ -19,7 +22,8 @@ effectManager namedEffect model dt object =
             )
 
         MainControl speed ->
-            ( { object | frame = control model (dt * speed) object.frame }
+            -- speed is in units per second, dt in milliseconds
+            ( { object | frame = control model (dt * speed * 0.001) object.frame }
             , Just (MainControl speed)
             )
 
@@ -30,7 +34,11 @@ effectManager namedEffect model dt object =
             floatBoat floatingInfo object
 
         Gravity g ->
-            ( gravity g dt object, Just (Gravity g) )
+            -- dt in milliseconds
+            ( gravity (g * 0.001) dt object, Just (Gravity g) )
+
+        Collide ->
+            ( object, Just Collide )
 
 
 interactionManager : Action -> NamedInteraction -> Maybe Interaction
@@ -67,8 +75,69 @@ interactionManager action name =
         ( RequestOcean, MinAction (M.Animate dt) ) ->
             Just requestOcean
 
+        ( ResolveCollisions, MinAction (M.Animate dt) ) ->
+            Just (resolveCollisions |> noAction)
+
         _ ->
             Nothing
+
+
+{-| Zero-indexed.
+-}
+allBut : Int -> List a -> List a
+allBut n xs =
+    (++) (List.take n xs) (List.drop (n + 1) xs)
+
+
+{-|
+-}
+resolveCollisions : Model -> ( Model, Maybe NamedInteraction )
+resolveCollisions model =
+    let
+        hasCollide obj =
+            List.member Collide obj.effects
+
+        toBody obj =
+            { frame = obj.frame
+            , bounds = Maybe.andThen getBounds obj.drawable |> Maybe.withDefault Collision.empty
+            }
+
+        newObjects =
+            model.objects
+                |> List.indexedMap (\n obj -> collide obj (allBut n model.objects))
+
+        resolve : Object -> Object -> Object
+        resolve obj hit =
+            let
+                nodesA =
+                    Collision.collisionMap (toBody obj) (toBody hit)
+
+                nodesB =
+                    Collision.collisionMap (toBody hit) (toBody obj)
+            in
+                { obj | material = Color (vec4 1 0 0 1) }
+
+        collide obj rest =
+            if hasCollide obj then
+                let
+                    body =
+                        toBody obj
+
+                    hits =
+                        rest
+                            |> List.filter hasCollide
+                            |> List.filter (\x -> Collision.collide body (toBody x))
+                in
+                    case List.head hits of
+                        Nothing ->
+                            { obj | material = Color (vec4 0 1 0 1) }
+
+                        Just hit ->
+                            resolve obj hit
+            else
+                obj
+    in
+        ( { model | objects = newObjects }, Just ResolveCollisions )
 
 
 {-| Applies gravity and displacement to object if it has .veloity.
@@ -100,9 +169,6 @@ request a new height. If the object is not over an ocean, does nothing.
 floatBoat : FloatingInfo -> Object -> ( Object, Maybe NamedEffect )
 floatBoat floatingInfo object =
     let
-        newInfo =
-            { floatingInfo | moved = True }
-
         ( x, y, z ) =
             V.toTuple object.frame.position
 
@@ -110,6 +176,7 @@ floatBoat floatingInfo object =
             max floatingInfo.height z
                 |> Vector x y
 
+        -- this feels inconsistent, sometimes can coast off waves, sometimes not
         velocity =
             case object.velocity of
                 Nothing ->
@@ -117,11 +184,11 @@ floatBoat floatingInfo object =
 
                 Just v ->
                     let
-                        ( x, y, z ) =
+                        ( x_, y_, z_ ) =
                             V.toTuple v
                     in
-                        if floatingInfo.height > z then
-                            Just (Vector x y 0)
+                        if floatingInfo.height >= z then
+                            Just (Vector x_ y_ 0)
                         else
                             Just v
 
@@ -133,15 +200,23 @@ floatBoat floatingInfo object =
                     }
                 , velocity = velocity
             }
-
-        outOfRange ( x, y ) =
-            (abs x) > 1 || (abs y) > 1
     in
-        if outOfRange floatingInfo.coordinates then
-            -- do nothing
-            ( object, Just (Floating floatingInfo) )
-        else
-            ( newObject, Just (Floating newInfo) )
+        case floatingInfo.coordinates of
+            Nothing ->
+                -- do nothing
+                ( object, Just (Floating { floatingInfo | moved = True }) )
+
+            Just coordinates ->
+                ( newObject, Just (Floating { floatingInfo | moved = True }) )
+
+
+{-| gets the first ocean
+-}
+getOcean : Model -> Maybe Object
+getOcean model =
+    model.objects
+        |> List.filter (\x -> x.drawable == Just Ocean)
+        |> List.head
 
 
 {-| Interaction handler for updating Floating effects.
@@ -150,16 +225,13 @@ requestOcean : Model -> ( Model, Maybe NamedInteraction, Cmd msg )
 requestOcean model =
     let
         inRange ( x, y, z ) =
-            if (abs x) <= 1 && (abs y) <= 1 then
+            if 0 < x && x < 1 && 0 < y && y < 1 then
                 Just ( x, y )
             else
                 Nothing
 
-        -- gets the first ocean
         ocean =
-            model.objects
-                |> List.filter (\x -> x.drawable == Just Ocean)
-                |> List.head
+            getOcean model
 
         -- does object have a Floating in need of update?
         needsRequest object =
@@ -194,12 +266,7 @@ requestOcean model =
                         _ ->
                             effect
             in
-                case findInOcean oc object of
-                    Just coordinates ->
-                        { object | effects = object.effects |> List.map (updateEffect coordinates) }
-
-                    Nothing ->
-                        object
+                { object | effects = object.effects |> List.map (updateEffect (findInOcean oc object)) }
 
         -- batch requests
         requests =
@@ -218,7 +285,14 @@ requestOcean model =
         newObjects =
             case ocean of
                 Just oc ->
-                    model.objects |> List.map (markRequest oc)
+                    model.objects
+                        |> List.map
+                            (\x ->
+                                if needsRequest x then
+                                    markRequest oc x
+                                else
+                                    x
+                            )
 
                 Nothing ->
                     model.objects
@@ -241,10 +315,19 @@ updateFloating model coordinates height object =
         update offset effect =
             case effect of
                 Floating info ->
-                    if info.requested && (toString info.coordinates) == coordinates then
-                        Floating { info | requested = False, moved = False, height = offset height }
-                    else
-                        Floating info
+                    let
+                        name =
+                            case info.coordinates of
+                                Just c ->
+                                    toString c
+
+                                Nothing ->
+                                    ""
+                    in
+                        if info.requested && name == coordinates then
+                            Floating { info | requested = False, moved = False, height = offset height }
+                        else
+                            Floating info
 
                 _ ->
                     effect
@@ -416,7 +499,7 @@ control : Model -> Float -> Frame -> Frame
 control model delta frame =
     frame
         |> move (M.directions model.keys model.gamepad) delta
-        |> turn (M.gamepadLook model.gamepad) delta
+        |> turn (M.gamepadLook model.gamepad) (delta * 50)
 
 
 {-| Uses typical XY directions to update frame. Ignore z.

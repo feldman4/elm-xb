@@ -38,11 +38,23 @@ updater a m =
         ( m3, Cmd.batch [ a2, a3 ] )
 
 
+updaterPre : Action -> Model -> ( Model, Cmd Action )
+updaterPre a m =
+    let
+        ( m2, a2 ) =
+            applyInteractions a m
+
+        ( m3, a3 ) =
+            update a m2
+    in
+        ( m3, Cmd.batch [ a2, a3 ] )
+
+
 init : ( Model, Cmd Action )
 init =
     let
         objects =
-            [ initAvatar, initOcean, face0, face1, initLightCube, initBoat ]
+            [ initAvatar, initOcean, face0, face1, initLightCube, initBoat, initIsland ]
 
         textureActions =
             [ Crate, Thwomp, NormalMap, DisplacementMap ]
@@ -53,22 +65,9 @@ init =
 
         action =
             Cmd.map MinAction msg
-
-        textureAction name =
-            textureURL name
-                |> WebGL.loadTexture
-                |> Task.attempt
-                    (\result ->
-                        case result of
-                            Err err ->
-                                TextureError err
-
-                            Ok val ->
-                                TextureLoaded ( name, val )
-                    )
     in
         { objects = objects
-        , interactions = [ Select, Follow (Orbital 0), RequestOcean ]
+        , interactions = [ Select, Follow (Orbital 0), RequestOcean, ResolveCollisions ]
         , person = model.person
         , keys = model.keys
         , gamepad = model.gamepad

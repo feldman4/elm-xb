@@ -15,6 +15,7 @@ attribute vec3 normal;
 
 uniform mat4 perspective;
 uniform mat4 transform;
+uniform mat4 normalMatrix;
 uniform vec3 light;
 uniform vec3 viewer;
 uniform vec4 color;
@@ -27,7 +28,8 @@ varying vec3 sources[2];
 
 void main () {
   vec4 worldPosition = transform * vec4(position, 1.0);
-  vec4 worldNormal = transform * vec4(normal, 1.0);
+  vec4 worldNormal = normalMatrix * vec4(normal, 1.0);
+
   gl_Position = perspective * worldPosition;
   phongL = normalize(light - worldPosition.xyz);
   phongN = normalize(worldNormal.xyz);
@@ -35,54 +37,6 @@ void main () {
   phongI = color.rgb;
   sources[0] = light;
   sources[1] = worldPosition.xyz;
-}
-
-|]
-
-
-edgeVertexShader : Shader EdgedVertex (Uniforms u) Varyings
-edgeVertexShader =
-    [glsl|
-
-precision mediump float;
-attribute vec3 position;
-attribute vec3 n1;
-attribute vec3 n2;
-attribute vec3 n3;
-attribute vec3 n4;
-attribute vec3 n5;
-attribute vec3 n6;
-
-uniform mat4 perspective;
-uniform vec3 light;
-uniform vec3 viewer;
-
-varying vec3 phongL;
-varying vec3 phongN;
-varying vec3 phongV;
-varying vec3 phongI;
-//varying float fDistance;
-varying vec3 sources[2];
-
-// acceptable at faking diffuse lighting, quite poor for specular lighting
-// NEEDS TO TRANSFORM NEIGHBORS TO GET THE RIGHT NORMAL
-vec3 estimateNormal(vec3 p, vec3 n1, vec3 n2, vec3 n3, vec3 n4, vec3 n5, vec3 n6) {
-  vec3 estimate = -0.3333 * (normalize(cross(p - n1, p - n2)) + normalize(cross(p - n3, p - n4)) + normalize(cross(p - n5, p - n6)));
-  return normalize(estimate);
-}
-
-
-void main () {
-  gl_Position = perspective * vec4(position, 1.0);
-  phongL = normalize(light - position);
-  phongN = estimateNormal(position,n1,n2,n3,n4,n5,n6);
-  phongV = normalize(viewer - position);
-
-  vec3 color = vec3(0.6, 0.7, 0.8);
-  phongI = color;
-  // fDistance = length(light - position);
-  sources[0] = light;
-  sources[1] = position;
 }
 
 |]
@@ -273,6 +227,54 @@ dummyFragmentShader =
 
 precision mediump float;
 void main () {
+}
+
+|]
+
+
+edgeVertexShader : Shader EdgedVertex (Uniforms u) Varyings
+edgeVertexShader =
+    [glsl|
+
+precision mediump float;
+attribute vec3 position;
+attribute vec3 n1;
+attribute vec3 n2;
+attribute vec3 n3;
+attribute vec3 n4;
+attribute vec3 n5;
+attribute vec3 n6;
+
+uniform mat4 perspective;
+uniform vec3 light;
+uniform vec3 viewer;
+
+varying vec3 phongL;
+varying vec3 phongN;
+varying vec3 phongV;
+varying vec3 phongI;
+//varying float fDistance;
+varying vec3 sources[2];
+
+// acceptable at faking diffuse lighting, quite poor for specular lighting
+// NEEDS TO TRANSFORM NEIGHBORS TO GET THE RIGHT NORMAL
+vec3 estimateNormal(vec3 p, vec3 n1, vec3 n2, vec3 n3, vec3 n4, vec3 n5, vec3 n6) {
+  vec3 estimate = -0.3333 * (normalize(cross(p - n1, p - n2)) + normalize(cross(p - n3, p - n4)) + normalize(cross(p - n5, p - n6)));
+  return normalize(estimate);
+}
+
+
+void main () {
+  gl_Position = perspective * vec4(position, 1.0);
+  phongL = normalize(light - position);
+  phongN = estimateNormal(position,n1,n2,n3,n4,n5,n6);
+  phongV = normalize(viewer - position);
+
+  vec3 color = vec3(0.6, 0.7, 0.8);
+  phongI = color;
+  // fDistance = length(light - position);
+  sources[0] = light;
+  sources[1] = position;
 }
 
 |]

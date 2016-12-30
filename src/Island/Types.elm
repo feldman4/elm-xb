@@ -8,6 +8,7 @@ import Minimum
 import Frame exposing (Frame)
 import Vector exposing (Vector)
 import EveryDict
+import Collision
 
 
 type NamedInteraction
@@ -15,15 +16,16 @@ type NamedInteraction
     | Deselect
     | Follow Follow
     | RequestOcean
+    | ResolveCollisions
 
 
 type NamedEffect
     = Control
     | MainControl Float
-      -- speed
     | View
     | Floating FloatingInfo
     | Gravity Float
+    | Collide
 
 
 
@@ -37,8 +39,11 @@ type Action
     | WaterIndicator ( String, ( Float, Float, Float, Float ) )
 
 
+{-|
+- coordinates : Nothing indicates out of bounds
+-}
 type alias FloatingInfo =
-    { coordinates : ( Float, Float )
+    { coordinates : Maybe ( Float, Float )
     , moved : Bool
     , requested : Bool
     , height : Float
@@ -47,7 +52,7 @@ type alias FloatingInfo =
 
 defaultFloating : FloatingInfo
 defaultFloating =
-    { coordinates = ( 0, 0 ), height = 1, moved = False, requested = False }
+    { coordinates = Nothing, height = 0, moved = False, requested = False }
 
 
 
@@ -60,6 +65,7 @@ type Thing
     | Face
     | SeaSphere
     | Ocean
+    | Island
 
 
 type NamedTexture
@@ -71,6 +77,12 @@ type NamedTexture
 
 type alias RawMesh =
     List ( Vec3, Vec3, Vec3 )
+
+
+type alias BoundedDrawable a =
+    { drawable : WebGL.Drawable a
+    , bounds : Collision.Bounds
+    }
 
 
 type alias Quad =
@@ -219,6 +231,7 @@ type alias Uniforms u =
     { u
         | perspective : Mat4
         , transform : Mat4
+        , normalMatrix : Mat4
         , light : Vec3
         , viewer : Vec3
     }

@@ -579,6 +579,11 @@ var Simulator = function (canvas) {
 
         var pixels = new Float32Array(width * height * 4);
         gl.readPixels(x, y, width, height, gl.RGBA, gl.FLOAT, pixels);
+
+        // // speed test, seems good
+        // var allPixels = new Float32Array(RESOLUTION * RESOLUTION * 4);
+        // gl.readPixels(0, 0, RESOLUTION, RESOLUTION, gl.RGBA, gl.FLOAT, allPixels);
+
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         return pixels;
     };
