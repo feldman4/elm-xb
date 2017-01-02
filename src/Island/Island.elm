@@ -9,7 +9,6 @@ import Island.Render exposing (..)
 import Island.Things exposing (..)
 import Island.Effects exposing (applyEffects, applyInteractions, updateFloating)
 import Frame
-import Task
 import EveryDict
 
 
@@ -53,6 +52,14 @@ updaterPre a m =
 init : ( Model, Cmd Action )
 init =
     let
+        interactions =
+            [ Select
+            , Follow (Orbital 0)
+            , RequestOcean
+              -- , DetectCollisionsGJK
+            , PauseExcept NoEffects
+            ]
+
         objects =
             [ initAvatar, initOcean, face0, face1, initLightCube, initBoat, initIsland ]
 
@@ -67,7 +74,7 @@ init =
             Cmd.map MinAction msg
     in
         { objects = objects
-        , interactions = [ Select, Follow (Orbital 0), RequestOcean, ResolveCollisions ]
+        , interactions = interactions
         , person = model.person
         , keys = model.keys
         , gamepad = model.gamepad

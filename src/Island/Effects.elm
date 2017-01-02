@@ -1,7 +1,8 @@
 port module Island.Effects exposing (..)
 
 import Island.Types exposing (..)
-import Island.Things exposing (getBounds)
+import Island.Geometry exposing (map3T, scale3D)
+import Island.Things exposing (getBounds, boat, island, cube)
 import Minimum as M exposing (angleBetween, foldla, toButton)
 import Frame exposing (Frame)
 import Math.Vector4 as V4 exposing (vec4)
@@ -10,11 +11,15 @@ import Quaternion as Q exposing (Quaternion)
 import Math.Vector3 as V3 exposing (Vec3, vec3)
 import Time exposing (Time)
 import Collision
+import GJK
 
 
 effectManager : NamedEffect -> Model -> Time -> Object -> ( Object, Maybe NamedEffect )
 effectManager namedEffect model dt object =
     case namedEffect of
+        Motion ->
+            ( motion object dt, Just Motion )
+
         Control ->
             -- pick up and hold
             ( { object | frame = object.frame |> Frame.setPosition (Frame.transformOutOf model.camera (Vector 2 0 0)) }
@@ -22,10 +27,28 @@ effectManager namedEffect model dt object =
             )
 
         MainControl speed ->
-            -- speed is in units per second, dt in milliseconds
-            ( { object | frame = control model (dt * speed * 0.001) object.frame }
-            , Just (MainControl speed)
-            )
+            case object.velocity of
+                Just vFrame ->
+                    let
+                        ( newFrame, dV ) =
+                            control model (dt * speed * 0.001) object.frame vFrame
+
+                        decay =
+                            0.5 ^ (dt * 0.001 / 0.25)
+
+                        newVFrame =
+                            Frame.extrinsicNudge dV vFrame
+                                |> clampVelocity 0.005 0.05
+                                |> (\x -> Frame.setPosition (V.scale decay x.position) x)
+                    in
+                        -- speed is in units per second, dt in milliseconds
+                        -- shouldn't have to set frame (turning)
+                        ( { object | velocity = Just newVFrame, frame = newFrame }
+                        , Just (MainControl speed)
+                        )
+
+                Nothing ->
+                    ( object, Just (MainControl speed) )
 
         View ->
             ( object, Just View )
@@ -39,6 +62,12 @@ effectManager namedEffect model dt object =
 
         Collide ->
             ( object, Just Collide )
+
+        Delete ->
+            ( object, Just Delete )
+
+        Pause effects ->
+            ( object, Just (Pause effects) )
 
 
 interactionManager : Action -> NamedInteraction -> Maybe Interaction
@@ -55,6 +84,9 @@ interactionManager action name =
                 _ ->
                     Nothing
 
+        ( Select, _ ) ->
+            Nothing
+
         ( Deselect, MinAction (M.ButtonChange ( bool, button )) ) ->
             case button |> toButton of
                 Just (M.B) ->
@@ -66,20 +98,278 @@ interactionManager action name =
                 _ ->
                     Nothing
 
+        ( Deselect, _ ) ->
+            Nothing
+
         ( Follow FPS, MinAction (M.Animate dt) ) ->
             Just (followFPS |> noAction)
 
         ( Follow (Orbital theta), MinAction (M.Animate dt) ) ->
             Just (followOrbital theta dt |> noAction)
 
+        ( Follow _, _ ) ->
+            Nothing
+
         ( RequestOcean, MinAction (M.Animate dt) ) ->
             Just requestOcean
+
+        ( RequestOcean, _ ) ->
+            Nothing
 
         ( ResolveCollisions, MinAction (M.Animate dt) ) ->
             Just (resolveCollisions |> noAction)
 
-        _ ->
+        ( ResolveCollisions, _ ) ->
             Nothing
+
+        ( DetectCollisionsGJK, MinAction (M.Animate dt) ) ->
+            Just (detectCollisionsGJK |> noAction)
+
+        ( DetectCollisionsGJK, _ ) ->
+            Nothing
+
+        ( Deletion, MinAction (M.Animate dt) ) ->
+            Just (delete |> noAction)
+
+        ( Deletion, _ ) ->
+            Nothing
+
+        ( PauseExcept exceptGroup, MinAction (M.Animate dt) ) ->
+            Just (pauseExcept exceptGroup |> noAction)
+
+        ( PauseExcept exceptGroup, MinAction (M.ButtonChange ( bool, button )) ) ->
+            case button |> toButton of
+                Just (M.X) ->
+                    if bool then
+                        Just ((\m -> ( pauseSwitch m, Just name )) |> noAction)
+                    else
+                        Nothing
+
+                _ ->
+                    Nothing
+
+        ( PauseExcept _, _ ) ->
+            Nothing
+
+
+clampVelocity : Float -> Float -> Frame -> Frame
+clampVelocity xyr zr frame =
+    let
+        ( x, y, z ) =
+            V.toTuple frame.position
+
+        v_xy =
+            Vector x y 0
+
+        m =
+            V.length v_xy |> clamp -xyr xyr
+
+        z_ =
+            clamp -zr zr z
+
+        v =
+            v_xy |> V.normalize |> Maybe.withDefault (Vector 0 0 0) |> V.scale m |> V.add (Vector 0 0 z_)
+    in
+        Frame.setPosition v frame
+
+
+motion : Object -> Float -> Object
+motion object dt =
+    case object.velocity of
+        Just vFrame ->
+            let
+                w =
+                    Q.getW vFrame.orientation
+
+                q2 =
+                    { vector =
+                        Vector 0 0 0
+                        -- vFrame.orientation.vector
+                    , scalar = 1
+                    }
+
+                dFrame =
+                    { position = V.scale dt vFrame.position
+                    , orientation = Debug.log "q2" q2
+                    }
+            in
+                { object | frame = Frame.compose dFrame object.frame }
+
+        Nothing ->
+            object
+
+
+{-| Switch an object's pause state. Works on everything in range.
+-}
+pauseSwitch : Model -> Model
+pauseSwitch model =
+    let
+        ( maxAngle, maxDistance ) =
+            ( 0.4, 10 )
+
+        canGrab =
+            grab maxAngle maxDistance model
+
+        isPause effect =
+            case effect of
+                Pause _ ->
+                    True
+
+                _ ->
+                    False
+
+        isMainControl effect =
+            case effect of
+                MainControl _ ->
+                    True
+
+                _ ->
+                    False
+
+        switch obj =
+            case List.filter isPause obj.effects |> List.head of
+                Just (Pause effects) ->
+                    { obj | effects = effects ++ (List.filter (not << isPause) obj.effects) }
+
+                _ ->
+                    { obj | effects = [ Pause [] ] ++ obj.effects }
+
+        apply obj =
+            if canGrab obj && not (List.any isMainControl obj.effects) then
+                switch obj
+            else
+                obj
+    in
+        { model | objects = List.map apply model.objects }
+
+
+{-| Move each object's Effects into a Pause Effect, unless they are in the
+exception group.
+-}
+pauseExcept : EffectGroup -> Model -> ( Model, Maybe NamedInteraction )
+pauseExcept exceptGroup model =
+    let
+        isPause effect =
+            case effect of
+                Pause _ ->
+                    True
+
+                _ ->
+                    False
+
+        isMainControl effect =
+            case effect of
+                MainControl _ ->
+                    True
+
+                _ ->
+                    False
+
+        shouldPause effect =
+            not (inEffectGroup exceptGroup effect)
+
+        pause obj =
+            case List.filter isPause obj.effects |> List.head of
+                Just (Pause effects) ->
+                    let
+                        ( a, b ) =
+                            List.filter (not << isPause) obj.effects
+                                |> List.partition shouldPause
+                    in
+                        [ Pause (effects ++ a) ] ++ b
+
+                _ ->
+                    -- this pauses all objects
+                    -- [ Pause obj.effects ]
+                    obj.effects
+
+        newObjects =
+            model.objects
+                |> List.map (\obj -> { obj | effects = pause obj })
+    in
+        ( { model | objects = newObjects }, Just (PauseExcept exceptGroup) )
+
+
+inEffectGroup : EffectGroup -> NamedEffect -> Bool
+inEffectGroup group effect =
+    case group of
+        AllEffects ->
+            True
+
+        NoEffects ->
+            False
+
+        CollideOnly ->
+            case effect of
+                Collide ->
+                    True
+
+                _ ->
+                    False
+
+
+delete : Model -> ( Model, Maybe NamedInteraction )
+delete model =
+    let
+        newObjects =
+            model.objects
+                |> List.filter (\x -> List.member Delete x.effects)
+    in
+        ( { model | objects = newObjects }, Just Deletion )
+
+
+detectCollisionsGJK : Model -> ( Model, Maybe NamedInteraction )
+detectCollisionsGJK model =
+    let
+        hasCollide obj =
+            List.member Collide obj.effects
+
+        getMesh obj =
+            let
+                mesh =
+                    case obj.drawable of
+                        Just LightCube ->
+                            cube
+
+                        Just Boat ->
+                            boat
+
+                        Just Island ->
+                            island
+
+                        _ ->
+                            []
+            in
+                mesh
+                    |> scale3D obj.scale
+                    |> List.map (map3T V.fromVec3)
+                    |> List.map (map3T (Frame.transformOutOf obj.frame))
+
+        collide obj rest =
+            if hasCollide obj then
+                let
+                    noHit =
+                        rest
+                            |> List.filter hasCollide
+                            |> List.filterMap (\x -> GJK.gjk (getMesh obj) (getMesh x))
+                            |> List.isEmpty
+                in
+                    if noHit then
+                        { obj | material = Color (vec4 0.6 0.6 0.6 1) }
+                    else
+                        { obj | material = Color (vec4 0 0 1 1) }
+            else
+                obj
+
+        markColliders objects =
+            objects
+                |> List.indexedMap (\n obj -> collide obj (allBut n objects))
+    in
+        ( { model | objects = markColliders model.objects }, Just DetectCollisionsGJK )
+
+
+
+-- ( { model | objects = markColliders model.objects }, Nothing )
 
 
 {-| Zero-indexed.
@@ -113,7 +403,7 @@ resolveCollisions model =
                     Collision.collisionMap (toBody obj) (toBody hit)
 
                 nodesB =
-                    Collision.collisionMap (toBody hit) (toBody obj)
+                    Collision.collisionMap (toBody hit)
             in
                 { obj | material = Color (vec4 1 0 0 1) }
 
@@ -140,22 +430,20 @@ resolveCollisions model =
         ( { model | objects = newObjects }, Just ResolveCollisions )
 
 
-{-| Applies gravity and displacement to object if it has .veloity.
+{-| Applies gravity to object if it has .velocity.
+Displacement handled in Motion Effect.
 -}
 gravity : Float -> Float -> Object -> Object
 gravity g dt object =
     case object.velocity of
-        Just v ->
+        Just vFrame ->
             let
-                velocity =
-                    V.zAxis |> V.scale (-dt * g) |> V.add v
+                v =
+                    vFrame
+                        |> Frame.extrinsicNudge (V.scale (-dt * g) V.zAxis)
             in
                 { object
-                    | frame =
-                        { position = V.add object.frame.position velocity
-                        , orientation = object.frame.orientation
-                        }
-                    , velocity = Just velocity
+                    | velocity = Just v
                 }
 
         Nothing ->
@@ -182,15 +470,15 @@ floatBoat floatingInfo object =
                 Nothing ->
                     Nothing
 
-                Just v ->
+                Just vFrame ->
                     let
                         ( x_, y_, z_ ) =
-                            V.toTuple v
+                            V.toTuple vFrame.position
                     in
                         if floatingInfo.height >= z then
-                            Just (Vector x_ y_ 0)
+                            Just (Frame.setPosition (Vector x_ y_ 0) vFrame)
                         else
-                            Just v
+                            Just vFrame
 
         newObject =
             { object
@@ -350,6 +638,26 @@ updateFloating model coordinates height object =
 port requestOceanPort : ( ( Float, Float ), String ) -> Cmd msg
 
 
+{-| Provide a test for objects within angular and distance tolerance.
+Not intended for orbital camera, maybe should add distance.
+Would be nice to have bounding box select, etc.
+-}
+grab : Float -> Float -> Model -> (Object -> Bool)
+grab maxAngle maxDistance model =
+    let
+        test object =
+            let
+                position =
+                    Frame.transformInto model.camera object.frame.position
+
+                angle =
+                    angleBetween (position |> V.toVec3) V3.i
+            in
+                (angle < maxAngle) && (V.length position < maxDistance)
+    in
+        test
+
+
 {-| Add Control Effect to objects within angular and distance tolerance.
 Only add if the object supports it (has a velocity).
 -}
@@ -359,34 +667,27 @@ select model =
         ( maxAngle, maxDistance ) =
             ( 0.4, 10 )
 
+        canGrab =
+            grab maxAngle maxDistance model
+
+        isMainControl x =
+            case x of
+                MainControl y ->
+                    True
+
+                _ ->
+                    False
+
         control object =
-            let
-                position =
-                    Frame.transformInto model.camera object.frame.position
-
-                angle =
-                    angleBetween (position |> V.toVec3) V3.i
-
-                valid =
-                    (angle < maxAngle) && (V.length position < maxDistance)
-
-                isMainControl x =
-                    case x of
-                        MainControl y ->
-                            True
-
-                        _ ->
-                            False
-            in
-                case object.velocity of
-                    Just x ->
-                        if valid && not (List.any isMainControl object.effects) then
-                            { object | effects = object.effects ++ [ Control ] }
-                        else
-                            object
-
-                    Nothing ->
+            case object.velocity of
+                Just x ->
+                    if (canGrab object) && not (List.any isMainControl object.effects) then
+                        { object | effects = object.effects ++ [ Control ] }
+                    else
                         object
+
+                Nothing ->
+                    object
 
         results : List Object
         results =
@@ -495,16 +796,25 @@ applyInteractions action model =
         ( { finalModel | interactions = finalInts }, Cmd.batch finalActions )
 
 
-control : Model -> Float -> Frame -> Frame
-control model delta frame =
-    frame
-        |> move (M.directions model.keys model.gamepad) delta
-        |> turn (M.gamepadLook model.gamepad) (delta * 50)
+control : Model -> Float -> Frame -> Frame -> ( Frame, Vector )
+control model delta frame vFrame =
+    let
+        -- change in velocity
+        dV =
+            move (M.directions model.keys model.gamepad) delta frame
+
+        -- |> Debug.log "m"
+        -- directly modify frame :(
+        -- not sure how to express turning as a change in velocity.orientation
+        newFrame =
+            turn (M.gamepadLook model.gamepad) (delta * 500) frame
+    in
+        ( newFrame, dV )
 
 
-{-| Uses typical XY directions to update frame. Ignore z.
+{-| Uses typical XY directions to return change in velocity frame. Ignore z.
 -}
-move : { x : Float, y : Float, z : Float } -> Float -> Frame -> Frame
+move : { x : Float, y : Float, z : Float } -> Float -> Frame -> Vector
 move { x, y, z } delta frame =
     let
         gaze =
@@ -525,9 +835,9 @@ move { x, y, z } delta frame =
                 |> V.normalize
                 |> Maybe.withDefault (Vector 0 0 0)
     in
-        frame
-            |> Frame.extrinsicNudge (V.scale x forward |> V.scale delta)
-            |> Frame.extrinsicNudge (V.scale y sideways |> V.scale delta)
+        V.scale x forward
+            |> V.add (V.scale y sideways)
+            |> V.scale delta
 
 
 turn : { dx : Float, dy : Float } -> Float -> Frame -> Frame

@@ -15,7 +15,7 @@ import Collision
 
 lightSource : Vec3
 lightSource =
-    vec3 0 0 10.0
+    vec3 0 0 5.0
 
 
 type alias URL =
@@ -110,28 +110,6 @@ getBounds thing =
             Nothing
 
 
-initLightCubeDrawable : WebGL.Drawable Attribute
-initLightCubeDrawable =
-    let
-        x =
-            centroid cube |> V3.scale -1
-    in
-        offset cube x
-            |> eachMeshPoint (V3.scale 0.3)
-            |> indexMesh
-            |> invertIndexedNormals
-            |> meshToTriangle
-
-
-initLightCube : Object
-initLightCube =
-    { defaultObject
-        | drawable = Just LightCube
-        , material = Color (vec4 1 1 1 1)
-        , frame = Frame.identity |> Frame.extrinsicNudge (Vector.fromVec3 lightSource)
-    }
-
-
 
 -- OBJECT
 
@@ -144,6 +122,7 @@ defaultObject =
     , scale = vec3 1 1 1
     , effects = []
     , velocity = Nothing
+    , bounds = Collision.empty
     }
 
 
@@ -151,11 +130,12 @@ initAvatar : Object
 initAvatar =
     { defaultObject
         | drawable = Just Boat
-        , velocity = Just (Vector 0 0 0)
+        , velocity = Just Frame.identity
         , scale = vec3 0.3 0.3 0.3
         , material = Color (vec4 0.7 0.7 0.9 1.0)
-        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 3 3 0)
-        , effects = [ MainControl 2, View, Gravity 0.1, Floating defaultFloating, Collide ]
+        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 2.1 2.1 0.1)
+        , bounds = Collision.empty
+        , effects = [ MainControl 0.2, View, Gravity 0.1, Motion, Floating defaultFloating, Collide ]
     }
 
 
@@ -170,10 +150,13 @@ initPlane =
 initIsland : Object
 initIsland =
     { defaultObject
-        | drawable = Just Island
+        | drawable = Just Boat
         , material = Color (vec4 (170 / 255.0) (108 / 255.0) (57 / 255.0) 1.0)
         , frame = Frame.identity |> Frame.extrinsicNudge (Vector 0 0 -2)
-        , effects = [ Collide ]
+        , bounds = Collision.empty
+        , scale = vec3 1 1 1
+        , velocity = Just Frame.identity
+        , effects = [ Collide, Gravity 0.1, Floating defaultFloating ]
     }
 
 
@@ -186,7 +169,7 @@ initBoat =
             Frame.identity
                 |> Frame.extrinsicNudge (Vector 29 29 30)
             -- |> Frame.intrinsicRotate (Quaternion.yRotation 2 |> Quaternion.compose (Quaternion.zRotation 0))
-        , velocity = Just (Vector 0 0 0)
+        , velocity = Just Frame.identity
         , effects =
             [-- Floating defaultFloating
              -- , Gravity 0.001
@@ -211,6 +194,28 @@ initSeaSphere =
     { defaultObject
         | drawable = Just SeaSphere
         , material = Color (vec4 0.2 0.2 0.8 0.5)
+    }
+
+
+initLightCubeDrawable : WebGL.Drawable Attribute
+initLightCubeDrawable =
+    let
+        x =
+            centroid cube |> V3.scale -1
+    in
+        offset cube x
+            |> indexMesh
+            -- |> invertIndexedNormals
+            |>
+                meshToTriangle
+
+
+initLightCube : Object
+initLightCube =
+    { defaultObject
+        | drawable = Just LightCube
+        , material = Color (vec4 1 1 1 1)
+        , frame = Frame.identity |> Frame.extrinsicNudge (Vector.fromVec3 lightSource)
     }
 
 

@@ -22,6 +22,18 @@ map3L f ( a, b, c ) =
     [ f a, f b, f c ]
 
 
+scale3D : Vec3 -> RawMesh -> RawMesh
+scale3D scale mesh =
+    let
+        ( x, y, z ) =
+            V3.toTuple scale
+
+        f v =
+            vec3 (x * V3.getX v) (y * V3.getY v) (z * V3.getZ v)
+    in
+        mesh |> List.map (map3T f)
+
+
 makeBounds : RawMesh -> Collision.Bounds
 makeBounds rawMesh =
     let

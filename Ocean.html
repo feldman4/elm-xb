@@ -79,6 +79,8 @@
             var oldGamepad = null;
             var oldA = false;
             var oldB = false;
+            var oldX = false;
+            var oldY = false;
 
             window.setInterval(pollGamepad, 30);
 
@@ -97,11 +99,19 @@
                         // convenient to be able to subscribe to button press
                         var newA = newGamepad.buttons[0].pressed;
                         var newB = newGamepad.buttons[1].pressed;
+                        var newX = newGamepad.buttons[2].pressed;
+                        var newY = newGamepad.buttons[3].pressed;
                         if (newA != oldA) {
                             app.ports.buttonChange.send([newA, "A"]);
                         }
                         if (newB != oldB) {
                             app.ports.buttonChange.send([newB, "B"]);
+                        }
+                        if (newX != oldX) {
+                            app.ports.buttonChange.send([newX, "X"]);
+                        }
+                        if (newY != oldY) {
+                            app.ports.buttonChange.send([newY, "Y"]);
                         }
                     }
 
@@ -110,6 +120,8 @@
                 if (!(newGamepad === null)) {
                   oldA = newGamepad.buttons[0].pressed;
                   oldB = newGamepad.buttons[1].pressed;
+                  oldX = newGamepad.buttons[2].pressed;
+                  oldY = newGamepad.buttons[3].pressed;
               }
             }
 

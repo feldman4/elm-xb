@@ -70,6 +70,11 @@ defaultPerson =
     }
 
 
+defaultGamepad : Gamepad
+defaultGamepad =
+    Gamepad 0 0 0 0 defaultButton defaultButton defaultButton defaultButton defaultButton defaultButton
+
+
 
 -- INIT
 -- init : ( Model, Cmd Action )
@@ -79,7 +84,7 @@ init : ( Model {}, Cmd Action )
 init =
     ( { person = defaultPerson
       , keys = Keys False False False False False
-      , gamepad = Gamepad 0 0 0 0 defaultButton defaultButton defaultButton defaultButton
+      , gamepad = defaultGamepad
       , window = Window.Size 0 0
       , dragModel = Drag.initialModel
       , clock = 0
@@ -174,6 +179,12 @@ toButton name =
         "B" ->
             Just B
 
+        "X" ->
+            Just X
+
+        "Y" ->
+            Just Y
+
         "LT" ->
             Just LT
 
@@ -187,6 +198,8 @@ toButton name =
 type Button
     = A
     | B
+    | X
+    | Y
     | LT
     | RT
 
@@ -200,12 +213,14 @@ type alias GamepadRaw =
 
 
 type alias Gamepad =
-    { x : Float
-    , y : Float
-    , up : Float
-    , right : Float
+    { up1 : Float
+    , right1 : Float
+    , up2 : Float
+    , right2 : Float
     , a : ButtonInfo
     , b : ButtonInfo
+    , x : ButtonInfo
+    , y : ButtonInfo
     , lt : ButtonInfo
     , rt : ButtonInfo
     }
@@ -213,7 +228,7 @@ type alias Gamepad =
 
 buttonActions : List ( Gamepad -> ButtonInfo, Button )
 buttonActions =
-    [ ( .a, A ), ( .b, B ), ( .lt, LT ), ( .rt, RT ) ]
+    [ ( .a, A ), ( .b, B ), ( .x, X ), ( .y, Y ), ( .lt, LT ), ( .rt, RT ) ]
 
 
 defaultButton : ButtonInfo
@@ -227,29 +242,41 @@ broil gamepadRaw =
         index n xs =
             xs |> List.drop n |> List.head
 
-        x =
-            gamepadRaw.axes |> index 0 |> Maybe.withDefault 0 |> outerClamp 0.2
+        getAxis n =
+            gamepadRaw.axes |> index n |> Maybe.withDefault 0 |> outerClamp 0.2
 
-        y =
-            gamepadRaw.axes |> index 1 |> Maybe.withDefault 0 |> outerClamp 0.2
+        getButton n =
+            gamepadRaw.buttons |> index n |> Maybe.withDefault defaultButton |> outerClampButton 0.2
 
-        up =
-            gamepadRaw.axes |> index 2 |> Maybe.withDefault 0 |> outerClamp 0.2
+        up1 =
+            getAxis 1
 
-        right =
-            gamepadRaw.axes |> index 3 |> Maybe.withDefault 0 |> outerClamp 0.2
+        right1 =
+            getAxis 0
+
+        up2 =
+            getAxis 2
+
+        right2 =
+            getAxis 3
 
         a =
-            gamepadRaw.buttons |> index 0 |> Maybe.withDefault defaultButton |> outerClampButton 0.2
+            getButton 0
 
         b =
-            gamepadRaw.buttons |> index 1 |> Maybe.withDefault defaultButton |> outerClampButton 0.2
+            getButton 1
+
+        x =
+            getButton 2
+
+        y =
+            getButton 3
 
         lt =
-            gamepadRaw.buttons |> index 6 |> Maybe.withDefault defaultButton |> outerClampButton 0.2
+            getButton 6
 
         rt =
-            gamepadRaw.buttons |> index 7 |> Maybe.withDefault defaultButton |> outerClampButton 0.2
+            getButton 7
 
         outerClamp r x =
             if (x < -r) || (x > r) then
@@ -260,13 +287,13 @@ broil gamepadRaw =
         outerClampButton r b =
             { b | value = outerClamp r b.value }
     in
-        { x = x, y = y, up = up, right = right, a = a, b = b, lt = lt, rt = rt }
+        { up1 = up1, right1 = right1, up2 = up2, right2 = right2, a = a, b = b, x = x, y = y, lt = lt, rt = rt }
 
 
 gamepadLook : Gamepad -> { dx : Float, dy : Float }
 gamepadLook gamepad =
-    { dx = gamepad.up * -gazeSpeed * 5
-    , dy = gamepad.right * -gazeSpeed * 5
+    { dx = gamepad.up2 * -gazeSpeed * 5
+    , dy = gamepad.right2 * -gazeSpeed * 5
     }
 
 
@@ -315,7 +342,7 @@ updateKeys ( on, keyCode ) k =
 
 
 directions : Keys -> Gamepad -> { x : Float, y : Float, z : Float }
-directions { left, right, up, down, shift } { x, y, a } =
+directions { left, right, up, down, shift } { right1, up1, a } =
     let
         direction a b =
             case ( a, b ) of
@@ -334,8 +361,8 @@ directions { left, right, up, down, shift } { x, y, a } =
             else
                 0
     in
-        { x = (direction down up) - 2 * y
-        , y = (direction right left) - 2 * x
+        { x = (direction down up) - 2 * up1
+        , y = (direction right left) - 2 * right1
         , z = directionUp
         }
 

@@ -6,7 +6,6 @@ import Math.Matrix4 as M4 exposing (Mat4)
 import WebGL exposing (Texture, Error)
 import Minimum
 import Frame exposing (Frame)
-import Vector exposing (Vector)
 import EveryDict
 import Collision
 
@@ -17,6 +16,9 @@ type NamedInteraction
     | Follow Follow
     | RequestOcean
     | ResolveCollisions
+    | DetectCollisionsGJK
+    | Deletion
+    | PauseExcept EffectGroup
 
 
 type NamedEffect
@@ -26,6 +28,19 @@ type NamedEffect
     | Floating FloatingInfo
     | Gravity Float
     | Collide
+    | Delete
+    | Pause EffectList
+    | Motion
+
+
+type alias EffectList =
+    List NamedEffect
+
+
+type EffectGroup
+    = AllEffects
+    | CollideOnly
+    | NoEffects
 
 
 
@@ -118,10 +133,6 @@ type alias Particle =
     { position : Vec3, mass : Float }
 
 
-type alias Motion a =
-    { a | lastFrame : Frame.Frame }
-
-
 type alias Rigid a =
     { a | nodes : List Particle }
 
@@ -135,7 +146,8 @@ type alias Object =
     , frame : Frame.Frame
     , scale : Vec3
     , effects : List NamedEffect
-    , velocity : Maybe Vector
+    , velocity : Maybe Frame
+    , bounds : Collision.Bounds
     }
 
 
