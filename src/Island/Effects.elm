@@ -1,7 +1,7 @@
 port module Island.Effects exposing (..)
 
 import Island.Types exposing (..)
-import Island.Geometry exposing (map3T, scale3D)
+import Island.Geometry exposing (map3T, scale3D, wFrameToFrame)
 import Island.Things exposing (getBounds, boat, island, cube)
 import Minimum as M exposing (angleBetween, foldla, toButton)
 import Frame exposing (Frame)
@@ -30,16 +30,8 @@ effectManager namedEffect model dt object =
             case object.velocity of
                 Just vFrame ->
                     let
-                        ( newFrame, dV ) =
+                        ( newFrame, newVFrame ) =
                             control model (dt * speed * 0.001) object.frame vFrame
-
-                        decay =
-                            0.5 ^ (dt * 0.001 / 0.25)
-
-                        newVFrame =
-                            Frame.extrinsicNudge dV vFrame
-                                |> clampVelocity 0.005 0.05
-                                |> (\x -> Frame.setPosition (V.scale decay x.position) x)
                     in
                         -- speed is in units per second, dt in milliseconds
                         -- shouldn't have to set frame (turning)
@@ -58,7 +50,7 @@ effectManager namedEffect model dt object =
 
         Gravity g ->
             -- dt in milliseconds
-            ( gravity (g * 0.001) dt object, Just (Gravity g) )
+            ( gravity (g * 0.001 * 3) dt object, Just (Gravity g) )
 
         Collide ->
             ( object, Just Collide )
@@ -152,11 +144,11 @@ interactionManager action name =
             Nothing
 
 
-clampVelocity : Float -> Float -> Frame -> Frame
-clampVelocity xyr zr frame =
+clampVelocity : Float -> Float -> Vector -> Vector
+clampVelocity xyr zr velocity =
     let
         ( x, y, z ) =
-            V.toTuple frame.position
+            V.toTuple velocity
 
         v_xy =
             Vector x y 0
@@ -170,7 +162,7 @@ clampVelocity xyr zr frame =
         v =
             v_xy |> V.normalize |> Maybe.withDefault (Vector 0 0 0) |> V.scale m |> V.add (Vector 0 0 z_)
     in
-        Frame.setPosition v frame
+        v
 
 
 motion : Object -> Float -> Object
@@ -178,22 +170,12 @@ motion object dt =
     case object.velocity of
         Just vFrame ->
             let
-                w =
-                    Q.getW vFrame.orientation
-
-                q2 =
-                    { vector =
-                        Vector 0 0 0
-                        -- vFrame.orientation.vector
-                    , scalar = 1
-                    }
-
-                dFrame =
-                    { position = V.scale dt vFrame.position
-                    , orientation = Debug.log "q2" q2
-                    }
+                newFrame =
+                    object.frame
+                        |> Frame.extrinsicNudge vFrame.position
+                        |> Frame.intrinsicRotate (Q.fromVector vFrame.omega)
             in
-                { object | frame = Frame.compose dFrame object.frame }
+                { object | frame = newFrame }
 
         Nothing ->
             object
@@ -438,12 +420,11 @@ gravity g dt object =
     case object.velocity of
         Just vFrame ->
             let
-                v =
-                    vFrame
-                        |> Frame.extrinsicNudge (V.scale (-dt * g) V.zAxis)
+                p =
+                    V.add vFrame.position (V.scale (-dt * g) V.zAxis)
             in
                 { object
-                    | velocity = Just v
+                    | velocity = Just { vFrame | position = p }
                 }
 
         Nothing ->
@@ -476,7 +457,7 @@ floatBoat floatingInfo object =
                             V.toTuple vFrame.position
                     in
                         if floatingInfo.height >= z then
-                            Just (Frame.setPosition (Vector x_ y_ 0) vFrame)
+                            Just { vFrame | position = Vector x_ y_ 0 }
                         else
                             Just vFrame
 
@@ -796,7 +777,7 @@ applyInteractions action model =
         ( { finalModel | interactions = finalInts }, Cmd.batch finalActions )
 
 
-control : Model -> Float -> Frame -> Frame -> ( Frame, Vector )
+control : Model -> Float -> Frame -> WFrame -> ( Frame, WFrame )
 control model delta frame vFrame =
     let
         -- change in velocity
@@ -808,8 +789,45 @@ control model delta frame vFrame =
         -- not sure how to express turning as a change in velocity.orientation
         newFrame =
             turn (M.gamepadLook model.gamepad) (delta * 500) frame
+
+        dW =
+            Q.toVector frame.orientation
+                |> V.sub (Q.toVector newFrame.orientation)
+                |> Debug.log "w"
+
+        -- reverse frame orientation before calculating difference
+        dW2 =
+            Frame.inverse frame
+                |> Frame.mul newFrame
+                |> .orientation
+                |> Q.toVector
+
+        newVFrame =
+            { position =
+                V.add vFrame.position dV
+                    |> clampVelocity 10 10
+                    |> V.scale decay
+            , omega =
+                qAdd vFrame.omega dW2 |> clampNormal 0.05 |> V.scale decay
+            }
+
+        qAdd w1 w2 =
+            Q.compose (Q.fromVector w1) (Q.fromVector w2) |> Q.toVector
+
+        clampNormal x v =
+            let
+                m =
+                    V.length v |> clamp 0 x
+            in
+                v
+                    |> V.normalize
+                    |> Maybe.withDefault (Vector 0 0 0)
+                    |> V.scale m
+
+        decay =
+            0.5 ^ (delta / 0.02)
     in
-        ( newFrame, dV )
+        ( frame, newVFrame )
 
 
 {-| Uses typical XY directions to return change in velocity frame. Ignore z.

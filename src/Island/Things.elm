@@ -130,7 +130,7 @@ initAvatar : Object
 initAvatar =
     { defaultObject
         | drawable = Just Boat
-        , velocity = Just Frame.identity
+        , velocity = Just (Frame.identity |> frameToWFrame)
         , scale = vec3 0.3 0.3 0.3
         , material = Color (vec4 0.7 0.7 0.9 1.0)
         , frame = Frame.identity |> Frame.extrinsicNudge (Vector 2.1 2.1 0.1)
@@ -155,7 +155,7 @@ initIsland =
         , frame = Frame.identity |> Frame.extrinsicNudge (Vector 0 0 -2)
         , bounds = Collision.empty
         , scale = vec3 1 1 1
-        , velocity = Just Frame.identity
+        , velocity = Just (Frame.identity |> frameToWFrame)
         , effects = [ Collide, Gravity 0.1, Floating defaultFloating ]
     }
 
@@ -169,7 +169,7 @@ initBoat =
             Frame.identity
                 |> Frame.extrinsicNudge (Vector 29 29 30)
             -- |> Frame.intrinsicRotate (Quaternion.yRotation 2 |> Quaternion.compose (Quaternion.zRotation 0))
-        , velocity = Just Frame.identity
+        , velocity = Just (Frame.identity |> frameToWFrame)
         , effects =
             [-- Floating defaultFloating
              -- , Gravity 0.001

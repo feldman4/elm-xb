@@ -6,6 +6,7 @@ import Math.Matrix4 as M4 exposing (Mat4)
 import WebGL exposing (Texture, Error)
 import Minimum
 import Frame exposing (Frame)
+import Vector exposing (Vector)
 import EveryDict
 import Collision
 
@@ -129,6 +130,10 @@ type Material
 -- OBJECTS, EFFECTS, INTERACTIONS
 
 
+type alias WFrame =
+    { position : Vector, omega : Vector }
+
+
 type alias Particle =
     { position : Vec3, mass : Float }
 
@@ -146,7 +151,7 @@ type alias Object =
     , frame : Frame.Frame
     , scale : Vec3
     , effects : List NamedEffect
-    , velocity : Maybe Frame
+    , velocity : Maybe WFrame
     , bounds : Collision.Bounds
     }
 

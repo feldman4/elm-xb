@@ -10,6 +10,8 @@ import Dict.Extra exposing (groupBy)
 import WebGL
 import Collision
 import Vector as V exposing (Vector)
+import Quaternion as Q
+import Frame exposing (Frame)
 
 
 map3T : (a -> b) -> ( a, a, a ) -> ( b, b, b )
@@ -20,6 +22,20 @@ map3T f ( a, b, c ) =
 map3L : (a -> b) -> ( a, a, a ) -> List b
 map3L f ( a, b, c ) =
     [ f a, f b, f c ]
+
+
+frameToWFrame : Frame -> WFrame
+frameToWFrame frame =
+    { position = frame.position
+    , omega = Q.toVector frame.orientation
+    }
+
+
+wFrameToFrame : WFrame -> Frame
+wFrameToFrame wFrame =
+    { position = wFrame.position
+    , orientation = Q.fromVector wFrame.omega
+    }
 
 
 scale3D : Vec3 -> RawMesh -> RawMesh
