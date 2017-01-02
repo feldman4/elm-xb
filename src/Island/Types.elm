@@ -131,7 +131,7 @@ type Material
 
 
 type alias WFrame =
-    { position : Vector, omega : Vector }
+    { position : Vector, omega : Vector, omegaInst : Vector }
 
 
 type alias Particle =

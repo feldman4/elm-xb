@@ -28,13 +28,14 @@ frameToWFrame : Frame -> WFrame
 frameToWFrame frame =
     { position = frame.position
     , omega = Q.toVector frame.orientation
+    , omegaInst = Vector 0 0 0
     }
 
 
 wFrameToFrame : WFrame -> Frame
 wFrameToFrame wFrame =
     { position = wFrame.position
-    , orientation = Q.fromVector wFrame.omega
+    , orientation = Q.fromVector (V.add wFrame.omega wFrame.omegaInst)
     }
 
 

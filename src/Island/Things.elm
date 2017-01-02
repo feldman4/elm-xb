@@ -8,7 +8,7 @@ import Meshes exposing (icosphere, subdivide)
 import Island.Geometry exposing (..)
 import Frame
 import Vector exposing (Vector)
-import Quaternion
+import Quaternion as Q
 import Task
 import Collision
 
@@ -135,7 +135,7 @@ initAvatar =
         , material = Color (vec4 0.7 0.7 0.9 1.0)
         , frame = Frame.identity |> Frame.extrinsicNudge (Vector 2.1 2.1 0.1)
         , bounds = Collision.empty
-        , effects = [ MainControl 0.2, View, Gravity 0.1, Motion, Floating defaultFloating, Collide ]
+        , effects = [ MainControl 0.2, View, Gravity 1, Motion, Floating defaultFloating, Collide ]
     }
 
 
@@ -156,7 +156,7 @@ initIsland =
         , bounds = Collision.empty
         , scale = vec3 1 1 1
         , velocity = Just (Frame.identity |> frameToWFrame)
-        , effects = [ Collide, Gravity 0.1, Floating defaultFloating ]
+        , effects = [ Collide, Gravity 1, Floating defaultFloating ]
     }
 
 
@@ -227,7 +227,7 @@ face0 =
         , frame =
             Frame.identity
                 |> Frame.extrinsicNudge (Vector.fromVec3 (vec3 3 -2 1))
-                |> Frame.intrinsicRotate (Quaternion.yRotation 1.5)
+                |> Frame.intrinsicRotate (Q.yRotation 1.5)
     }
 
 
@@ -238,7 +238,7 @@ face1 =
         , material = MaterialTexture DisplacementMap
         , frame =
             Frame.identity
-                |> Frame.extrinsicRotate (Quaternion.yRotation 1.5)
+                |> Frame.extrinsicRotate (Q.yRotation 1.5)
                 |> Frame.extrinsicNudge (Vector.fromVec3 (vec3 3 2 1))
     }
 

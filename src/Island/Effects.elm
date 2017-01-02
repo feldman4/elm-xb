@@ -30,12 +30,12 @@ effectManager namedEffect model dt object =
             case object.velocity of
                 Just vFrame ->
                     let
-                        ( newFrame, newVFrame ) =
+                        newVFrame =
                             control model (dt * speed * 0.001) object.frame vFrame
                     in
                         -- speed is in units per second, dt in milliseconds
                         -- shouldn't have to set frame (turning)
-                        ( { object | velocity = Just newVFrame, frame = newFrame }
+                        ( { object | velocity = Just newVFrame }
                         , Just (MainControl speed)
                         )
 
@@ -50,7 +50,7 @@ effectManager namedEffect model dt object =
 
         Gravity g ->
             -- dt in milliseconds
-            ( gravity (g * 0.001 * 3) dt object, Just (Gravity g) )
+            ( gravity (g * 0.001) dt object, Just (Gravity g) )
 
         Collide ->
             ( object, Just Collide )
@@ -170,10 +170,15 @@ motion object dt =
     case object.velocity of
         Just vFrame ->
             let
+                q =
+                    V.add vFrame.omega vFrame.omegaInst
+                        |> Q.fromVector
+
                 newFrame =
                     object.frame
                         |> Frame.extrinsicNudge vFrame.position
-                        |> Frame.intrinsicRotate (Q.fromVector vFrame.omega)
+                        |> Frame.intrinsicRotate (Q.fromVector vFrame.omegaInst)
+                        |> Frame.extrinsicRotate (Q.fromVector vFrame.omega)
             in
                 { object | frame = newFrame }
 
@@ -777,7 +782,7 @@ applyInteractions action model =
         ( { finalModel | interactions = finalInts }, Cmd.batch finalActions )
 
 
-control : Model -> Float -> Frame -> WFrame -> ( Frame, WFrame )
+control : Model -> Float -> Frame -> WFrame -> WFrame
 control model delta frame vFrame =
     let
         -- change in velocity
@@ -790,11 +795,6 @@ control model delta frame vFrame =
         newFrame =
             turn (M.gamepadLook model.gamepad) (delta * 500) frame
 
-        dW =
-            Q.toVector frame.orientation
-                |> V.sub (Q.toVector newFrame.orientation)
-                |> Debug.log "w"
-
         -- reverse frame orientation before calculating difference
         dW2 =
             Frame.inverse frame
@@ -802,17 +802,23 @@ control model delta frame vFrame =
                 |> .orientation
                 |> Q.toVector
 
+        -- when adding omega over time, something accumulates
+        -- leads to clockwise roll. comes out when omega is far from
+        -- the external z axis
+        -- maybe this is physical? game notion of rotation is to set an
+        -- instantaneous omega. if we add in previous omegas we will not get
+        -- the instantaneous result unless the directions coincide.
+        --
+        -- should be able to add some of omegaInst to omega; transformOutOf
+        -- omegaInst doesn't work
         newVFrame =
             { position =
                 V.add vFrame.position dV
-                    |> clampVelocity 10 10
+                    |> clampVelocity 10 50
                     |> V.scale decay
-            , omega =
-                qAdd vFrame.omega dW2 |> clampNormal 0.05 |> V.scale decay
+            , omega = vFrame.omega
+            , omegaInst = dW2
             }
-
-        qAdd w1 w2 =
-            Q.compose (Q.fromVector w1) (Q.fromVector w2) |> Q.toVector
 
         clampNormal x v =
             let
@@ -827,7 +833,7 @@ control model delta frame vFrame =
         decay =
             0.5 ^ (delta / 0.02)
     in
-        ( frame, newVFrame )
+        newVFrame
 
 
 {-| Uses typical XY directions to return change in velocity frame. Ignore z.
