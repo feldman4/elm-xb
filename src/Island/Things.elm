@@ -135,7 +135,7 @@ initAvatar =
         , material = Color (vec4 0.7 0.7 0.9 1.0)
         , frame = Frame.identity |> Frame.extrinsicNudge (Vector 2.1 2.1 0.1)
         , bounds = Collision.empty
-        , effects = [ MainControl 0.2, View, Gravity 1, Motion, Floating defaultFloating, Collide ]
+        , effects = [ MainControl 0.2, View, Motion, Collide, Gravity 1, Floating defaultFloating ]
     }
 
 
@@ -150,11 +150,11 @@ initPlane =
 initIsland : Object
 initIsland =
     { defaultObject
-        | drawable = Just Boat
+        | drawable = Just Island
         , material = Color (vec4 (170 / 255.0) (108 / 255.0) (57 / 255.0) 1.0)
-        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 0 0 -2)
+        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 0 0 -8)
         , bounds = Collision.empty
-        , scale = vec3 1 1 1
+        , scale = vec3 15 15 3
         , velocity = Just (Frame.identity |> frameToWFrame)
         , effects = [ Collide, Gravity 1, Floating defaultFloating ]
     }

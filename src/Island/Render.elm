@@ -72,8 +72,14 @@ renderObject { window, camera, textures } object =
             Color color ->
                 let
                     uniforms =
-                        { defaultUniforms
-                            | color = color
+                        { perspective = perspectiveMatrix
+                        , transform = transform
+                        , normalMatrix = normalMatrix
+                        , light = lightSource
+                        , viewer = camera.position |> V.toVec3
+                        , color = vec4 0.8 0.8 0.8 1
+                        , r = 30
+                        , l = 15
                         }
                 in
                     render colorVertexShader colorFragmentShader drawable uniforms
@@ -117,6 +123,8 @@ renderObject { window, camera, textures } object =
                                     , color = vec4 0.9 0.9 1.0 0.3
                                     , displacement = dTexture
                                     , normals = nTexture
+                                    , r = 30
+                                    , l = 15
                                     }
                             in
                                 render oceanVertexShader colorFragmentShader drawable uniforms
