@@ -7,10 +7,12 @@ import Island.Types exposing (..)
 import Meshes exposing (icosphere, subdivide)
 import Island.Geometry exposing (..)
 import Frame
-import Vector exposing (Vector)
+import Vector as V exposing (Vector)
 import Quaternion as Q
 import Task
 import Collision
+import EveryDict exposing (EveryDict)
+import Lazy exposing (Lazy)
 
 
 lightSource : Vec3
@@ -110,6 +112,59 @@ getBounds thing =
             Nothing
 
 
+{-| Memoized
+-}
+getMesh : Thing -> RawMesh
+getMesh thing =
+    case thing of
+        Island ->
+            island
+
+        _ ->
+            island
+
+
+{-|
+-}
+apply : EveryDict b (Lazy a) -> b -> Maybe a
+apply dict =
+    \arg -> Maybe.map Lazy.force (EveryDict.get arg dict)
+
+
+{-| adapted from jvoigtlaender/elm-memo
+-}
+memo : (a -> b) -> List a -> a -> Maybe b
+memo fun args =
+    apply (EveryDict.fromList (List.map (\arg -> ( arg, Lazy.lazy (\() -> fun arg) )) args))
+
+
+{-| Can't find a good way to memoize function with union type argument, except
+by writing full pattern match every time.
+-}
+memoMesh : (RawMesh -> a) -> Thing -> a
+memoMesh f =
+    let
+        g x =
+            f (getMesh x)
+    in
+        (\x ->
+            (memo g allThings x)
+                |> Maybe.withDefault (Debug.crash ("bad request: " ++ toString x) f [])
+        )
+
+
+mMakeBounds : Thing -> Collision.Bounds
+mMakeBounds =
+    memoMesh makeBounds
+
+
+toBody : Object -> Collision.Body {}
+toBody obj =
+    { frame = obj.frame
+    , bounds = Maybe.andThen getBounds obj.drawable |> Maybe.withDefault Collision.empty
+    }
+
+
 
 -- OBJECT
 
@@ -122,7 +177,6 @@ defaultObject =
     , scale = vec3 1 1 1
     , effects = []
     , velocity = Nothing
-    , bounds = Collision.empty
     }
 
 
@@ -133,9 +187,8 @@ initAvatar =
         , velocity = Just (Frame.identity |> frameToWFrame)
         , scale = vec3 0.3 0.3 0.3
         , material = Color (vec4 0.7 0.7 0.9 1.0)
-        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 2.1 2.1 0.1)
-        , bounds = Collision.empty
-        , effects = [ MainControl 0.2, View, Motion, Collide, Gravity 1, Floating defaultFloating ]
+        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 2.1 2.1 2.1)
+        , effects = [ MainControl 2, View, Collide OBB, Gravity 1, Motion, Floating defaultFloating ]
     }
 
 
@@ -152,11 +205,10 @@ initIsland =
     { defaultObject
         | drawable = Just Island
         , material = Color (vec4 (170 / 255.0) (108 / 255.0) (57 / 255.0) 1.0)
-        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 0 0 -8)
-        , bounds = Collision.empty
-        , scale = vec3 15 15 3
-        , velocity = Just (Frame.identity |> frameToWFrame)
-        , effects = [ Collide, Gravity 1, Floating defaultFloating ]
+        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 0 0 -2)
+        , scale = vec3 1 1 1
+        , velocity = Nothing
+        , effects = [ Collide OBB ]
     }
 
 
@@ -167,12 +219,14 @@ initBoat =
         , material = Color (vec4 1 0.5 0 1)
         , frame =
             Frame.identity
-                |> Frame.extrinsicNudge (Vector 29 29 30)
+                |> Frame.extrinsicNudge (Vector 0 0 10)
             -- |> Frame.intrinsicRotate (Quaternion.yRotation 2 |> Quaternion.compose (Quaternion.zRotation 0))
         , velocity = Just (Frame.identity |> frameToWFrame)
         , effects =
-            [-- Floating defaultFloating
-             -- , Gravity 0.001
+            [ Floating defaultFloating
+            , Gravity 1
+            , Collide OBB
+            , Motion
             ]
     }
 
@@ -197,25 +251,12 @@ initSeaSphere =
     }
 
 
-initLightCubeDrawable : WebGL.Drawable Attribute
-initLightCubeDrawable =
-    let
-        x =
-            centroid cube |> V3.scale -1
-    in
-        offset cube x
-            |> indexMesh
-            -- |> invertIndexedNormals
-            |>
-                meshToTriangle
-
-
 initLightCube : Object
 initLightCube =
     { defaultObject
         | drawable = Just LightCube
         , material = Color (vec4 1 1 1 1)
-        , frame = Frame.identity |> Frame.extrinsicNudge (Vector.fromVec3 lightSource)
+        , frame = Frame.identity |> Frame.extrinsicNudge (V.fromVec3 lightSource)
     }
 
 
@@ -226,7 +267,7 @@ face0 =
         , material = MaterialTexture NormalMap
         , frame =
             Frame.identity
-                |> Frame.extrinsicNudge (Vector.fromVec3 (vec3 3 -2 1))
+                |> Frame.extrinsicNudge (V.fromVec3 (vec3 3 -2 1))
                 |> Frame.intrinsicRotate (Q.yRotation 1.5)
     }
 
@@ -239,12 +280,25 @@ face1 =
         , frame =
             Frame.identity
                 |> Frame.extrinsicRotate (Q.yRotation 1.5)
-                |> Frame.extrinsicNudge (Vector.fromVec3 (vec3 3 2 1))
+                |> Frame.extrinsicNudge (V.fromVec3 (vec3 3 2 1))
     }
 
 
 
 -- DRAWABLE
+
+
+initLightCubeDrawable : WebGL.Drawable Attribute
+initLightCubeDrawable =
+    let
+        x =
+            centroid cube |> V3.scale -1
+    in
+        offset cube x
+            |> indexMesh
+            -- |> invertIndexedNormals
+            |>
+                meshToTriangle
 
 
 initBoatDrawable : BoundedDrawable Attribute
@@ -294,11 +348,19 @@ initSeaSphereDrawable =
 initIslandDrawable : BoundedDrawable Attribute
 initIslandDrawable =
     let
+        frame =
+            Frame.identity |> Frame.intrinsicRotate (Q.xRotation 1)
+
+        rotate v =
+            v |> V.fromVec3 |> Frame.transformOutOf frame |> V.toVec3
+
         mesh =
             centroid island
                 |> V3.scale -1
                 |> offset island
                 |> List.map (map3T (V3.scale 8))
+                |> scale3D (vec3 1 1 1)
+                |> List.map (map3T rotate)
     in
         { drawable =
             mesh

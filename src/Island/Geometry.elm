@@ -39,6 +39,45 @@ wFrameToFrame wFrame =
     }
 
 
+type alias M2 =
+    ( Float, Float, Float, Float )
+
+
+invert2x2 : M2 -> Maybe M2
+invert2x2 m =
+    let
+        ( a, b, c, d ) =
+            m
+
+        det =
+            a * d - b * c
+    in
+        if det < 1.0e-3 then
+            Nothing
+        else
+            Just ( d / det, -b / det, -c / det, a / det )
+
+
+{-| Reflect vector through normal.
+-}
+reflect : Vector -> Vector -> Vector
+reflect n x =
+    let
+        n_ =
+            V.normalize n
+                |> Maybe.withDefault V.zAxis
+    in
+        n_
+            |> V.scale (1 * (V.dot n_ x))
+            |> V.sub x
+
+
+
+--
+-- toBarycentric : (Vec3, Vec3, Vec3) -> Vec3 -> Vec3
+-- weighted : Float -> Float -> Float
+
+
 scale3D : Vec3 -> RawMesh -> RawMesh
 scale3D scale mesh =
     let
@@ -51,9 +90,82 @@ scale3D scale mesh =
         mesh |> List.map (map3T f)
 
 
+eachV : (Float -> Float) -> Vector -> Vector
+eachV f v =
+    Vector (f v.x) (f v.y) (f v.z)
+
+
+type Dir
+    = LeftTurn
+    | RightTurn
+    | Straight
+
+
+{-| From notnew/elm-hull. Not sure old-style .head adapted correctly.
+-}
+hull : List ( Float, Float ) -> List ( Float, Float )
+hull pts =
+    let
+        diff ( x, y ) ( x_, y_ ) =
+            ( x - x_, y - y_ )
+
+        direction ( x, y ) ( x_, y_ ) =
+            let
+                cross =
+                    x * y_ - y * x_
+
+                -- z component of cross product
+            in
+                if cross < 0 then
+                    LeftTurn
+                else if cross > 0 then
+                    RightTurn
+                else
+                    Straight
+
+        getDirection a b c =
+            direction (diff b a) (diff c b)
+
+        sorted =
+            List.sortBy Tuple.first pts
+
+        top =
+            go LeftTurn (List.tail sorted |> Maybe.withDefault []) (List.take 1 sorted)
+
+        bottom =
+            go RightTurn (List.tail sorted |> Maybe.withDefault []) (List.take 1 sorted)
+
+        go dir pts stack =
+            case ( pts, stack ) of
+                ( [], s ) ->
+                    s
+
+                ( p :: ps, s :: [] ) ->
+                    go dir ps (p :: stack)
+
+                ( p :: ps, b :: a :: ss ) ->
+                    if getDirection a b p == dir then
+                        go dir ps (p :: stack)
+                    else
+                        go dir pts (a :: ss)
+
+                ( _, [] ) ->
+                    []
+    in
+        top ++ List.reverse bottom |> List.Extra.unique
+
+
+eachV2 : (Float -> Float -> Float) -> Vector -> Vector -> Vector
+eachV2 f a b =
+    Vector (f a.x b.x) (f a.y b.y) (f a.z b.z)
+
+
 makeBounds : RawMesh -> Collision.Bounds
 makeBounds rawMesh =
     let
+        z =
+            Debug.log "made bounds" (List.length rawMesh)
+
         toFace ( a, b, c ) =
             Collision.face (V.fromVec3 a) (V.fromVec3 b) (V.fromVec3 c)
     in

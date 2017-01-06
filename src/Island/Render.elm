@@ -77,9 +77,8 @@ renderObject { window, camera, textures } object =
                         , normalMatrix = normalMatrix
                         , light = lightSource
                         , viewer = camera.position |> V.toVec3
-                        , color = vec4 0.8 0.8 0.8 1
-                        , r = 30
-                        , l = 15
+                        , color = color
+                        , r = 3000
                         }
                 in
                     render colorVertexShader colorFragmentShader drawable uniforms

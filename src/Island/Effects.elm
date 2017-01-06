@@ -1,8 +1,8 @@
 port module Island.Effects exposing (..)
 
 import Island.Types exposing (..)
-import Island.Geometry exposing (map3T, scale3D, wFrameToFrame)
-import Island.Things exposing (getBounds, boat, island, cube)
+import Island.Geometry exposing (map3T, map3L, scale3D, wFrameToFrame, reflect, eachV2)
+import Island.Things exposing (getBounds, toBody, boat, island, cube)
 import Minimum as M exposing (angleBetween, foldla, toButton)
 import Frame exposing (Frame)
 import Math.Vector4 as V4 exposing (vec4)
@@ -11,14 +11,17 @@ import Quaternion as Q exposing (Quaternion)
 import Math.Vector3 as V3 exposing (Vec3, vec3)
 import Time exposing (Time)
 import Collision
-import GJK
+import Collision.Tree
+import Set
+import Dict
+import List.Extra
 
 
 effectManager : NamedEffect -> Model -> Time -> Object -> ( Object, Maybe NamedEffect )
 effectManager namedEffect model dt object =
     case namedEffect of
         Motion ->
-            ( motion object dt, Just Motion )
+            ( motion dt object, Just Motion )
 
         Control ->
             -- pick up and hold
@@ -52,8 +55,8 @@ effectManager namedEffect model dt object =
             -- dt in milliseconds
             ( gravity (g * 0.001) dt object, Just (Gravity g) )
 
-        Collide ->
-            ( object, Just Collide )
+        Collide x ->
+            ( object, Just (Collide x) )
 
         Delete ->
             ( object, Just Delete )
@@ -109,15 +112,9 @@ interactionManager action name =
             Nothing
 
         ( ResolveCollisions, MinAction (M.Animate dt) ) ->
-            Just (resolveCollisions |> noAction)
+            Just (resolveCollisions dt |> noAction)
 
         ( ResolveCollisions, _ ) ->
-            Nothing
-
-        ( DetectCollisionsGJK, MinAction (M.Animate dt) ) ->
-            Just (detectCollisionsGJK |> noAction)
-
-        ( DetectCollisionsGJK, _ ) ->
             Nothing
 
         ( Deletion, MinAction (M.Animate dt) ) ->
@@ -165,20 +162,33 @@ clampVelocity xyr zr velocity =
         v
 
 
-motion : Object -> Float -> Object
-motion object dt =
+motion : Float -> Object -> Object
+motion dt object =
     case object.velocity of
         Just vFrame ->
             let
-                q =
-                    V.add vFrame.omega vFrame.omegaInst
-                        |> Q.fromVector
-
                 newFrame =
                     object.frame
-                        |> Frame.extrinsicNudge vFrame.position
-                        |> Frame.intrinsicRotate (Q.fromVector vFrame.omegaInst)
-                        |> Frame.extrinsicRotate (Q.fromVector vFrame.omega)
+                        |> Frame.extrinsicNudge (V.scale (dt / 30) vFrame.position)
+                        |> Frame.intrinsicRotate (Q.fromVector (V.scale (dt / 30) vFrame.omegaInst))
+                        |> Frame.extrinsicRotate (Q.fromVector (V.scale (dt / 30) vFrame.omega))
+            in
+                { object | frame = newFrame }
+
+        Nothing ->
+            object
+
+
+undoMotion : Float -> Object -> Object
+undoMotion dt object =
+    case object.velocity of
+        Just vFrame ->
+            let
+                newFrame =
+                    object.frame
+                        |> Frame.extrinsicRotate (Q.conjugate (Q.fromVector (V.scale (dt / 30) vFrame.omega)))
+                        |> Frame.intrinsicRotate (Q.conjugate (Q.fromVector (V.scale (dt / 30) vFrame.omegaInst)))
+                        |> Frame.extrinsicNudge (V.scale (dt / 30) (V.scale -1 vFrame.position))
             in
                 { object | frame = newFrame }
 
@@ -288,7 +298,7 @@ inEffectGroup group effect =
 
         CollideOnly ->
             case effect of
-                Collide ->
+                Collide _ ->
                     True
 
                 _ ->
@@ -305,57 +315,56 @@ delete model =
         ( { model | objects = newObjects }, Just Deletion )
 
 
-detectCollisionsGJK : Model -> ( Model, Maybe NamedInteraction )
-detectCollisionsGJK model =
-    let
-        hasCollide obj =
-            List.member Collide obj.effects
 
-        getMesh obj =
-            let
-                mesh =
-                    case obj.drawable of
-                        Just LightCube ->
-                            cube
-
-                        Just Boat ->
-                            boat
-
-                        Just Island ->
-                            island
-
-                        _ ->
-                            []
-            in
-                mesh
-                    |> scale3D obj.scale
-                    |> List.map (map3T V.fromVec3)
-                    |> List.map (map3T (Frame.transformOutOf obj.frame))
-
-        collide obj rest =
-            if hasCollide obj then
-                let
-                    noHit =
-                        rest
-                            |> List.filter hasCollide
-                            |> List.filterMap (\x -> GJK.gjk (getMesh obj) (getMesh x))
-                            |> List.isEmpty
-                in
-                    if noHit then
-                        { obj | material = Color (vec4 0.6 0.6 0.6 1) }
-                    else
-                        { obj | material = Color (vec4 0 0 1 1) }
-            else
-                obj
-
-        markColliders objects =
-            objects
-                |> List.indexedMap (\n obj -> collide obj (allBut n objects))
-    in
-        ( { model | objects = markColliders model.objects }, Just DetectCollisionsGJK )
-
-
-
+--
+-- detectCollisionsGJK : Model -> ( Model, Maybe NamedInteraction )
+-- detectCollisionsGJK model =
+--     let
+--         hasCollide obj =
+--             List.member Collide obj.effects
+--
+--         getMesh obj =
+--             let
+--                 mesh =
+--                     case obj.drawable of
+--                         Just LightCube ->
+--                             cube
+--
+--                         Just Boat ->
+--                             boat
+--
+--                         Just Island ->
+--                             island
+--
+--                         _ ->
+--                             []
+--             in
+--                 mesh
+--                     |> scale3D obj.scale
+--                     |> List.map (map3T V.fromVec3)
+--                     |> List.map (map3T (Frame.transformOutOf obj.frame))
+--
+--         collide obj rest =
+--             if hasCollide obj then
+--                 let
+--                     noHit =
+--                         rest
+--                             |> List.filter hasCollide
+--                             |> List.filterMap (\x -> GJK.gjk (getMesh obj) (getMesh x))
+--                             |> List.isEmpty
+--                 in
+--                     if noHit then
+--                         { obj | material = Color (vec4 0.6 0.6 0.6 1) }
+--                     else
+--                         { obj | material = Color (vec4 0 0 1 1) }
+--             else
+--                 obj
+--
+--         markColliders objects =
+--             objects
+--                 |> List.indexedMap (\n obj -> collide obj (allBut n objects))
+--     in
+--         ( { model | objects = markColliders model.objects }, Just DetectCollisionsGJK )
 -- ( { model | objects = markColliders model.objects }, Nothing )
 
 
@@ -366,55 +375,234 @@ allBut n xs =
     (++) (List.take n xs) (List.drop (n + 1) xs)
 
 
-{-|
+{-| Reverse motion, set velocity to zero. No contact position/normal.
 -}
-resolveCollisions : Model -> ( Model, Maybe NamedInteraction )
-resolveCollisions model =
-    let
-        hasCollide obj =
-            List.member Collide obj.effects
+undoCollision : Float -> Object -> Object
+undoCollision dt object =
+    case object.velocity of
+        Nothing ->
+            object
 
-        toBody obj =
-            { frame = obj.frame
-            , bounds = Maybe.andThen getBounds obj.drawable |> Maybe.withDefault Collision.empty
-            }
+        Just v ->
+            let
+                z =
+                    Debug.log "collision undone" object.drawable
+
+                newObject =
+                    object |> undoMotion dt
+
+                reversed =
+                    Vector v.position.x v.position.y 0.05
+
+                zeroVelocity =
+                    { position = reversed, omega = Vector 0 0 0, omegaInst = Vector 0 0 0 }
+            in
+                { newObject | velocity = Just zeroVelocity }
+
+
+{-| Function should be true at low and false at high.
+-}
+binarySearch : (Float -> Bool) -> Float -> Float -> Float -> Float
+binarySearch f tol low high =
+    let
+        mid =
+            (low + high) / 2
+    in
+        if high - low < tol then
+            if f high then
+                high
+            else
+                mid
+        else if f mid then
+            binarySearch f tol mid high
+        else
+            binarySearch f tol low mid
+
+
+undoCollisionNormal : Float -> Vector -> Object -> Object -> Object
+undoCollisionNormal dt normal surface object =
+    case object.velocity of
+        Nothing ->
+            object
+
+        Just v ->
+            let
+                toBody obj =
+                    { frame = obj.frame
+                    , bounds = Maybe.andThen getBounds obj.drawable |> Maybe.withDefault Collision.empty
+                    }
+
+                tol =
+                    0.01
+
+                bodyB =
+                    toBody surface
+
+                f x =
+                    undoMotion x object
+                        |> toBody
+                        |> Collision.collide bodyB
+
+                t =
+                    binarySearch f (tol * dt) 0 dt
+
+                z2 =
+                    Debug.log "tau" (t / dt)
+
+                stopZ =
+                    Vector v.position.x v.position.y 0
+
+                reflectZ =
+                    reflect normal v.position
+
+                newV =
+                    { position = reflectZ, omega = Vector 0 0 0, omegaInst = Vector 0 0 0 }
+
+                newObject =
+                    undoMotion (t + tol) object
+                        |> (\x -> { x | velocity = Just newV })
+                        |> motion dt
+            in
+                newObject
+
+
+isJust : Maybe a -> Bool
+isJust a =
+    case a of
+        Just _ ->
+            True
+
+        Nothing ->
+            False
+
+
+resolveCollisions : Float -> Model -> ( Model, Maybe NamedInteraction )
+resolveCollisions dt model =
+    let
+        collide a rest =
+            List.foldl (runCollider dt) a rest
 
         newObjects =
             model.objects
+                |> List.filter (\obj -> getCollide obj |> isJust)
                 |> List.indexedMap (\n obj -> collide obj (allBut n model.objects))
-
-        resolve : Object -> Object -> Object
-        resolve obj hit =
-            let
-                nodesA =
-                    Collision.collisionMap (toBody obj) (toBody hit)
-
-                nodesB =
-                    Collision.collisionMap (toBody hit)
-            in
-                { obj | material = Color (vec4 1 0 0 1) }
-
-        collide obj rest =
-            if hasCollide obj then
-                let
-                    body =
-                        toBody obj
-
-                    hits =
-                        rest
-                            |> List.filter hasCollide
-                            |> List.filter (\x -> Collision.collide body (toBody x))
-                in
-                    case List.head hits of
-                        Nothing ->
-                            { obj | material = Color (vec4 0 1 0 1) }
-
-                        Just hit ->
-                            resolve obj hit
-            else
-                obj
     in
         ( { model | objects = newObjects }, Just ResolveCollisions )
+
+
+{-| Deal with collision between objects A and B as follows:
+
+- only do a collide if A has a velocity, A and B have Collide effect, and velocities are not equal with zero angular component
+- Collide * vs. GJK, GJK vs. *
+  - implies convex
+  - resolve collision by setting A's velocity equal to B's velocity
+- Collide OBB/N vs. OBB
+  - resolve collision by setting A's velocity equal to B's velocity
+- Collide OBB/N vs. OBBN
+  - resolve collision by contact normal method
+- Collide * vs. HeightMap
+  - displace A vertically by position in B
+
+-}
+runCollider : Float -> Object -> Object -> Object
+runCollider dt b a =
+    case ( getCollide a, getCollide b ) of
+        ( Just OBB, Just OBB ) ->
+            resolveOBB dt a b
+
+        ( Just OBBN, Just OBB ) ->
+            resolveOBB dt a b
+
+        ( Just OBB, Just OBBN ) ->
+            resolveOBBN dt a b
+
+        ( Just OBBN, Just OBBN ) ->
+            resolveOBBN dt a b
+
+        ( Just _, Just HeightMap ) ->
+            resolveHeightMap dt a b
+
+        ( Just _, Just GJK ) ->
+            a
+
+        ( Just GJK, Just _ ) ->
+            a
+
+        _ ->
+            a
+
+
+resolveOBB : Float -> Object -> Object -> Object
+resolveOBB dt a b =
+    { a | material = Color (vec4 1 0 0 1) } |> undoCollision dt
+
+
+resolveOBBN : Float -> Object -> Object -> Object
+resolveOBBN dt a b =
+    let
+        nodesB =
+            Collision.collisionMap (toBody b) (toBody a)
+
+        leavesB =
+            Collision.Tree.leaves (toBody b).bounds
+                |> Dict.fromList
+
+        hitLeavesB =
+            nodesB
+                |> Set.toList
+                |> List.filterMap (\k -> Dict.get k leavesB)
+
+        faceNormal leaf =
+            V.cross (V.sub leaf.p leaf.r) (V.sub leaf.q leaf.r)
+                |> V.normalize
+                |> Maybe.withDefault V.zAxis
+
+        hitNormalB =
+            hitLeavesB
+                |> List.map faceNormal
+                |> List.foldl V.add (Vector 0 0 0)
+                |> V.normalize
+                |> Maybe.withDefault V.zAxis
+    in
+        { a | material = Color (vec4 1 0 0 1) } |> undoCollisionNormal dt hitNormalB b
+
+
+resolveHeightMap : Float -> Object -> Object -> Object
+resolveHeightMap dt a b =
+    let
+        toXY v =
+            ( v.x, v.y )
+
+        uniqueXY mesh =
+            mesh
+                |> List.map (map3L toXY)
+                |> List.Extra.unique
+
+        over =
+            a.frame.position
+                |> Frame.transformInto b.frame
+                |> eachV2 (flip (/)) (b.scale |> V.fromVec3)
+                |> toXY
+
+        -- flag =
+        --   uniqueXY getMesh
+        --     List.member over
+    in
+        a
+
+
+getCollide : Object -> Maybe CollideType
+getCollide obj =
+    let
+        f effect =
+            case effect of
+                Collide x ->
+                    Just x
+
+                _ ->
+                    Nothing
+    in
+        obj.effects |> List.filterMap f |> List.head
 
 
 {-| Applies gravity to object if it has .velocity.
@@ -793,7 +981,7 @@ control model delta frame vFrame =
         -- directly modify frame :(
         -- not sure how to express turning as a change in velocity.orientation
         newFrame =
-            turn (M.gamepadLook model.gamepad) (delta * 500) frame
+            turn (M.gamepadLook model.gamepad) (delta * 50) frame
 
         -- reverse frame orientation before calculating difference
         dW2 =
@@ -831,7 +1019,7 @@ control model delta frame vFrame =
                     |> V.scale m
 
         decay =
-            0.5 ^ (delta / 0.02)
+            0.5 ^ (delta / 0.06)
     in
         newVFrame
 

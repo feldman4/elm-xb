@@ -17,7 +17,6 @@ type NamedInteraction
     | Follow Follow
     | RequestOcean
     | ResolveCollisions
-    | DetectCollisionsGJK
     | Deletion
     | PauseExcept EffectGroup
 
@@ -28,7 +27,7 @@ type NamedEffect
     | View
     | Floating FloatingInfo
     | Gravity Float
-    | Collide
+    | Collide CollideType
     | Delete
     | Pause EffectList
     | Motion
@@ -42,6 +41,13 @@ type EffectGroup
     = AllEffects
     | CollideOnly
     | NoEffects
+
+
+type CollideType
+    = GJK
+    | OBB
+    | OBBN
+    | HeightMap
 
 
 
@@ -82,6 +88,11 @@ type Thing
     | SeaSphere
     | Ocean
     | Island
+
+
+allThings : List Thing
+allThings =
+    [ LightCube, Boat, Face, SeaSphere, Ocean, Island ]
 
 
 type NamedTexture
@@ -152,7 +163,6 @@ type alias Object =
     , scale : Vec3
     , effects : List NamedEffect
     , velocity : Maybe WFrame
-    , bounds : Collision.Bounds
     }
 
 
@@ -214,6 +224,7 @@ type alias Modeled =
     , textures : EveryDict.EveryDict NamedTexture Texture
     , interactions : List NamedInteraction
     , camera : Frame
+    , dt : Float
     }
 
 

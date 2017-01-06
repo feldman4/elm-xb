@@ -61,7 +61,6 @@ uniform vec3 light;
 uniform vec3 viewer;
 uniform vec4 color;
 uniform float r;
-uniform float l;
 
 varying vec3 phongL;
 varying vec3 phongN;
@@ -70,7 +69,7 @@ varying vec3 phongI;
 varying vec3 sources[2];
 
 vec4 zetetic(vec4 position) {
-  vec3 sp = vec3((position.x / l) * (3.14 / 2.0), atan(position.y, position.x), position.z + r);
+  vec3 sp = vec3((position.x / r) * (3.14 / 2.0), atan(position.y, position.x), position.z + r);
   return vec4(sp.z * sin(sp.x) * cos(sp.y), sp.z * sin(sp.x) * sin(sp.y), sp.z * cos(sp.x) - r,1.0);
 }
 
@@ -105,7 +104,6 @@ uniform vec3 light;
 uniform vec3 viewer;
 uniform vec4 color;
 uniform float r;
-uniform float l;
 
 uniform sampler2D displacement; // displacement map
 uniform sampler2D normals; // normal map
@@ -118,7 +116,7 @@ varying vec3 sources[2];
 
 
 vec4 zetetic(vec4 position) {
-  vec3 sp = vec3((position.x / l) * (3.14 / 2.0), atan(position.y, position.x), position.z + r);
+  vec3 sp = vec3((position.x / r) * (3.14 / 2.0), atan(position.y, position.x), position.z + r);
   return vec4(sp.z * sin(sp.x) * cos(sp.y), sp.z * sin(sp.x) * sin(sp.y), sp.z * cos(sp.x) - r,1.0);
 }
 
@@ -132,7 +130,8 @@ void main () {
   vec4 worldPosition = transform * vec4(displacedPosition, 1.0);
   vec4 worldNormal = transform * vec4(texture2D(normals, position.xy).xyz, 1.0);
   worldNormal = worldNormal.xzyw; // WRONG, NEED TO FIGURE OUT
-  gl_Position = perspective * zetetic(worldPosition);
+  // gl_Position = perspective * zetetic(worldPosition);
+  gl_Position = perspective * worldPosition;
   phongL = normalize(light - worldPosition.xyz);
   phongN = normalize(worldNormal.xyz);
   phongV = normalize(viewer - worldPosition.xyz);

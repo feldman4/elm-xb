@@ -53,18 +53,18 @@ init : ( Model, Cmd Action )
 init =
     let
         interactions =
-            [ Select
+            [ ResolveCollisions
+            , Select
+            , PauseExcept NoEffects
             , Follow (Orbital 0)
             , RequestOcean
-              -- , DetectCollisionsGJK
-            , PauseExcept NoEffects
             ]
 
         objects =
-            [ initOcean, initAvatar, face0, face1, initLightCube ]
+            [ initOcean, initAvatar, face0, face1, initLightCube, initIsland ]
 
+        -- [
         -- initBoat, initIsland,
-        -- initOcean
         textureActions =
             [ Crate, Thwomp, NormalMap, DisplacementMap ]
                 |> List.map textureAction
@@ -85,6 +85,7 @@ init =
         , dragModel = model.dragModel
         , textures = EveryDict.empty
         , camera = Frame.identity
+        , dt = 0
         }
             ! ([ action ] ++ textureActions)
 
@@ -105,6 +106,7 @@ update action model =
                                 | objects =
                                     model.objects
                                         |> List.map (applyEffects model dt)
+                                , dt = dt
                             }
 
                         _ ->
@@ -165,7 +167,7 @@ view model =
                 ++ (textureEntity model)
 
         message =
-            [ "Enjoy your stay on the island." ]
+            [ "Enjoy your stay on the island. " ++ (toString model.dt) ]
 
         messageText =
             List.map text message
