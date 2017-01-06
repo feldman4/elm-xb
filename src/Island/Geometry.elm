@@ -24,6 +24,11 @@ map3L f ( a, b, c ) =
     [ f a, f b, f c ]
 
 
+map3R : (a -> a -> a -> b) -> ( a, a, a ) -> ( b, b, b )
+map3R f ( p, r, q ) =
+    ( f p r q, f r q p, f q p r )
+
+
 frameToWFrame : Frame -> WFrame
 frameToWFrame frame =
     { position = frame.position
@@ -37,6 +42,195 @@ wFrameToFrame wFrame =
     { position = wFrame.position
     , orientation = Q.fromVector (V.add wFrame.omega wFrame.omegaInst)
     }
+
+
+type Tree a
+    = Node ( Vector, Tree a, Tree a )
+    | Leaf a
+    | Empty
+
+
+buildTree : (List a -> Vector) -> (Vector -> a -> Bool) -> List a -> Tree a
+buildTree separate test parts =
+    case parts of
+        [] ->
+            Empty
+
+        x :: [] ->
+            Leaf x
+
+        x :: xs ->
+            let
+                v =
+                    separate parts
+
+                ( left, right ) =
+                    parts |> List.partition (test v)
+
+                b =
+                    buildTree separate test
+            in
+                Node ( v, b left, b right )
+
+
+{-| For cases when the same item may appear in both branches, e.g., triangles
+separated by a plane.
+-}
+buildTree2 : (List a -> ( Vector, List a, List a )) -> List a -> Tree a
+buildTree2 separate parts =
+    case parts of
+        [] ->
+            Empty
+
+        x :: [] ->
+            Leaf x
+
+        x :: xs ->
+            let
+                ( v, left, right ) =
+                    separate parts
+
+                b =
+                    buildTree2 separate
+            in
+                Node ( v, b left, b right )
+
+
+queryTree : (Vector -> Bool) -> Tree a -> Maybe a
+queryTree test tree =
+    case tree of
+        Empty ->
+            Nothing
+
+        Leaf a ->
+            Just a
+
+        Node ( v, left, right ) ->
+            if test v then
+                queryTree test left
+            else
+                queryTree test right
+
+
+type alias XY =
+    ( Float, Float )
+
+
+type alias TriMesh a =
+    List ( a, a, a )
+
+
+{-| Get a vector for inclusion testing from the RQ edge of 2D triangle PRQ.
+-}
+edgeVector : XY -> XY -> XY -> Vector
+edgeVector ( p1, p2 ) ( r1, r2 ) ( q1, q2 ) =
+    let
+        a =
+            Vector (p1 - r1) (p2 - r2) 0
+
+        b =
+            Vector (q1 - r1) (q2 - r2) 0
+
+        w =
+            V.cross a b
+                |> V.cross b
+                |> V.normalize
+                |> Maybe.withDefault (Vector 1 0 0)
+
+        bias =
+            V.dot w a
+    in
+        Vector w.x w.y bias
+
+
+test2DTriangle : Vector -> ( XY, XY, XY ) -> Bool
+test2DTriangle v tri =
+    let
+        test ( x, y ) =
+            (V.dot (Vector x y -1) v) >= 0
+    in
+        tri |> map3L test |> List.all identity
+
+
+splitTriangles : TriMesh XY -> ( Vector, TriMesh XY, TriMesh XY )
+splitTriangles triangles =
+    let
+        points =
+            triangles |> List.concatMap (map3L identity)
+
+        plane =
+            split2D points
+
+        ( left, right ) =
+            triangles
+                |> List.partition (test2DTriangle plane)
+
+        trouble =
+            List.length triangles > 2 && (List.isEmpty left || List.isEmpty right)
+
+        -- if trouble then
+        --   let
+        --     unpack (a,b,c) = [a,b,c]
+        --
+        --     judge v =
+        --       List.partition test2D v
+        --
+        --     edgeVectors =
+        --       triangles
+        --         |> (map3R edgeVector) >> unpack
+    in
+        ( Vector 0 0 0, triangles, triangles )
+
+
+split2D : List ( Float, Float ) -> Vector
+split2D parts =
+    let
+        points =
+            parts |> List.map (\( x, y ) -> Vector x y 0)
+
+        sum =
+            List.foldl V.add (Vector 0 0 0)
+
+        centroid =
+            sum points
+                |> V.scale (1 / (List.length points |> toFloat))
+
+        cov =
+            points
+                |> List.map (\x -> V.sub x centroid)
+                |> List.map V.toTuple
+                |> List.map (\( x, y, z ) -> Vector (x * x) (x * y) (y * y))
+                |> sum
+
+        ( a, b, c, d ) =
+            ( cov.x, cov.y, cov.y, cov.z )
+
+        trace =
+            a + d
+
+        det =
+            a * d - b * c
+
+        l1 =
+            (trace / 2) + sqrt ((trace ^ 2 / 4) - det)
+
+        v =
+            if b == 0 then
+                if a > d then
+                    Vector 1 0 0
+                else
+                    Vector 0 1 0
+            else
+                Vector (l1 - d) c 0
+                    |> V.normalize
+                    |> Maybe.withDefault V.xAxis
+    in
+        Vector v.x v.y (V.dot v centroid)
+
+
+test2D : Vector -> ( Float, Float ) -> Bool
+test2D v ( x, y ) =
+    V.dot (Vector x y -1) v >= 0
 
 
 type alias M2 =
@@ -404,4 +598,6 @@ edgedMeshToTriangle mesh =
                 , n6 = get 6
                 }
     in
-        mesh |> List.map (map3T toAttribute) |> WebGL.Triangle
+        mesh
+            |> List.map (map3T toAttribute)
+            |> WebGL.Triangle
