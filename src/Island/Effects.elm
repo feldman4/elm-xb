@@ -1,7 +1,7 @@
 port module Island.Effects exposing (..)
 
 import Island.Types exposing (..)
-import Island.Geometry exposing (map3T, map3L, scale3D, wFrameToFrame, reflect, eachV2)
+import Island.Geometry exposing (map3T, map3L, scale3D, wFrameToFrame, reflect, eachV2, isJust)
 import Island.Things exposing (getCached, toBody, boat, island, cube)
 import Minimum as M exposing (angleBetween, foldla, toButton)
 import Frame exposing (Frame)
@@ -458,16 +458,6 @@ undoCollisionNormal dt normal surface object =
                         |> motion dt
             in
                 newObject
-
-
-isJust : Maybe a -> Bool
-isJust a =
-    case a of
-        Just _ ->
-            True
-
-        Nothing ->
-            False
 
 
 resolveCollisions : Float -> Model -> ( Model, Maybe NamedInteraction )

@@ -14,6 +14,13 @@ import Quaternion as Q
 import Frame exposing (Frame)
 
 
+{-| Tolerance for plane tests and the like.
+-}
+eps : Float
+eps =
+    0.001
+
+
 map3T : (a -> b) -> ( a, a, a ) -> ( b, b, b )
 map3T f ( a, b, c ) =
     ( f a, f b, f c )
@@ -27,6 +34,16 @@ map3L f ( a, b, c ) =
 map3R : (a -> a -> a -> b) -> ( a, a, a ) -> ( b, b, b )
 map3R f ( p, r, q ) =
     ( f p r q, f r q p, f q p r )
+
+
+isJust : Maybe a -> Bool
+isJust a =
+    case a of
+        Just _ ->
+            True
+
+        Nothing ->
+            False
 
 
 frameToWFrame : Frame -> WFrame
@@ -120,66 +137,117 @@ type alias TriMesh a =
     List ( a, a, a )
 
 
+meshToXY : RawMesh -> TriMesh XY
+meshToXY mesh =
+    let
+        toXY v =
+            ( V3.getX v, V3.getY v )
+    in
+        mesh |> List.map (map3T toXY)
+
+
 {-| Get a vector for inclusion testing from the RQ edge of 2D triangle PRQ.
+Returns Nothing if the triangle has zero area.
+CCW.
 -}
-edgeVector : XY -> XY -> XY -> Vector
+edgeVector : XY -> XY -> XY -> Maybe Vector
 edgeVector ( p1, p2 ) ( r1, r2 ) ( q1, q2 ) =
     let
         a =
-            Vector (p1 - r1) (p2 - r2) 0
-
-        b =
             Vector (q1 - r1) (q2 - r2) 0
 
-        w =
+        b =
+            Vector (p1 - r1) (p2 - r2) 0
+
+        up =
             V.cross a b
-                |> V.cross b
-                |> V.normalize
-                |> Maybe.withDefault (Vector 1 0 0)
+
+        w =
+            if up.z <= eps then
+                Nothing
+            else
+                up |> V.cross b |> V.normalize
 
         bias =
-            V.dot w a
+            Maybe.map (\x -> V.dot x (Vector r1 r2 0)) w
     in
-        Vector w.x w.y bias
+        Maybe.map2 (\w b -> Vector w.x w.y b) w bias
 
 
 test2DTriangle : Vector -> ( XY, XY, XY ) -> Bool
 test2DTriangle v tri =
     let
         test ( x, y ) =
-            (V.dot (Vector x y -1) v) >= 0
+            (V.dot (Vector x y -1) v) >= eps
     in
-        tri |> map3L test |> List.all identity
+        -- tri |> shrinkTriangle 0.01 |> map3L test |> List.any identity
+        tri |> map3L test |> List.any identity
 
 
-splitTriangles : TriMesh XY -> ( Vector, TriMesh XY, TriMesh XY )
-splitTriangles triangles =
+leftRightSplit : (Vector -> ( XY, XY, XY ) -> Bool) -> Vector -> TriMesh XY -> ( TriMesh XY, TriMesh XY )
+leftRightSplit test v triangles =
     let
+        left =
+            triangles
+                |> List.filter (test v)
+
+        right =
+            triangles
+                |> List.filter (test (V.scale -1 v))
+    in
+        ( left, right )
+
+
+{-| only takes upward facing triangles
+-}
+splitTriangles : TriMesh XY -> ( Vector, TriMesh XY, TriMesh XY )
+splitTriangles inputTriangles =
+    let
+        triangles =
+            inputTriangles
+                |> List.filter (\( p, r, q ) -> edgeVector p r q |> isJust)
+
         points =
             triangles |> List.concatMap (map3L identity)
 
-        plane =
+        v =
             split2D points
 
         ( left, right ) =
-            triangles
-                |> List.partition (test2DTriangle plane)
+            leftRightSplit test2DTriangle v triangles
 
         trouble =
-            List.length triangles > 2 && (List.isEmpty left || List.isEmpty right)
+            max (List.length left) (List.length right) >= List.length triangles
 
-        -- if trouble then
-        --   let
-        --     unpack (a,b,c) = [a,b,c]
-        --
-        --     judge v =
-        --       List.partition test2D v
-        --
-        --     edgeVectors =
-        --       triangles
-        --         |> (map3R edgeVector) >> unpack
+        -- z =
+        --     Debug.log "# triangles:" (List.length triangles)
     in
-        ( Vector 0 0 0, triangles, triangles )
+        if trouble then
+            let
+                -- want the split that decreases the max # of triangles in a branch
+                score v_ =
+                    triangles
+                        |> leftRightSplit test2DTriangle v_
+                        |> (\( a, b ) -> max (List.length a) (List.length b))
+
+                v2 =
+                    triangles
+                        |> List.map (map3R edgeVector)
+                        |> List.concatMap (\( a, b, c ) -> [ a, b, c ])
+                        |> List.filterMap identity
+                        |> List.sortBy score
+                        |> List.head
+                        |> Maybe.withDefault (Vector 1 0 0)
+
+                ( left2, right2 ) =
+                    leftRightSplit test2DTriangle v2 triangles
+
+                -- z =
+                --     Debug.log "trouble" ( List.length left2, List.length right2, v2, triangles )
+            in
+                ( v2, left2, right2 )
+        else
+            ( v, left, right )
 
 
 split2D : List ( Float, Float ) -> Vector
@@ -228,13 +296,47 @@ split2D parts =
         Vector v.x v.y (V.dot v centroid)
 
 
-test2D : Vector -> ( Float, Float ) -> Bool
-test2D v ( x, y ) =
-    V.dot (Vector x y -1) v >= 0
+{-| s is small
+-}
+shrinkTriangle : Float -> ( XY, XY, XY ) -> ( XY, XY, XY )
+shrinkTriangle s ( ( p1, p2 ), ( r1, r2 ), ( q1, q2 ) ) =
+    let
+        c1 =
+            (p1 + r1 + q1) / 3
+
+        c2 =
+            (p2 + r2 + q2) / 3
+
+        shrink x1 x2 =
+            ( x1 + (c1 - x1) * s, x2 + (c2 - x2) * s )
+    in
+        ( shrink p1 p2, shrink r1 r2, shrink q1 q2 )
+
+
+test2D : ( Float, Float ) -> Vector -> Bool
+test2D ( x, y ) v =
+    V.dot (Vector x y -1) v >= -eps
 
 
 type alias M2 =
     ( Float, Float, Float, Float )
+
+
+inTriangle : XY -> ( XY, XY, XY ) -> Bool
+inTriangle pt triangle =
+    let
+        ( e1, e2, e3 ) =
+            map3R edgeVector triangle
+
+        f =
+            test2D pt
+    in
+        case ( e1, e2, e3 ) of
+            ( Just e1_, Just e2_, Just e3_ ) ->
+                f e1_ && f e2_ && f e3_
+
+            _ ->
+                False
 
 
 invert2x2 : M2 -> Maybe M2
@@ -371,9 +473,6 @@ eachV2 f a b =
 makeBounds : RawMesh -> Collision.Bounds
 makeBounds rawMesh =
     let
-        z =
-            Debug.log "made bounds" (List.length rawMesh)
-
         toFace ( a, b, c ) =
             Collision.face (V.fromVec3 a) (V.fromVec3 b) (V.fromVec3 c)
     in
