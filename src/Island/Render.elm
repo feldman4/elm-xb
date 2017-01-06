@@ -42,7 +42,7 @@ renderObject { window, camera, textures } object =
             perspective ( window.width, window.height ) camera
 
         drawable =
-            getThing object.drawable
+            (getCached object.drawable).drawable
 
         transform =
             M4.mul (object.frame |> Frame.toMat4) (M4.makeScale object.scale)

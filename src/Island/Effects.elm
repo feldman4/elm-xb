@@ -2,7 +2,7 @@ port module Island.Effects exposing (..)
 
 import Island.Types exposing (..)
 import Island.Geometry exposing (map3T, map3L, scale3D, wFrameToFrame, reflect, eachV2)
-import Island.Things exposing (getBounds, toBody, boat, island, cube)
+import Island.Things exposing (getCached, toBody, boat, island, cube)
 import Minimum as M exposing (angleBetween, foldla, toButton)
 import Frame exposing (Frame)
 import Math.Vector4 as V4 exposing (vec4)
@@ -14,7 +14,6 @@ import Collision
 import Collision.Tree
 import Set
 import Dict
-import List.Extra
 
 
 effectManager : NamedEffect -> Model -> Time -> Object -> ( Object, Maybe NamedEffect )
@@ -427,11 +426,6 @@ undoCollisionNormal dt normal surface object =
 
         Just v ->
             let
-                toBody obj =
-                    { frame = obj.frame
-                    , bounds = Maybe.andThen getBounds obj.drawable |> Maybe.withDefault Collision.empty
-                    }
-
                 tol =
                     0.01
 
@@ -484,8 +478,9 @@ resolveCollisions dt model =
 
         newObjects =
             model.objects
-                |> List.filter (\obj -> getCollide obj |> isJust)
-                |> List.indexedMap (\n obj -> collide obj (allBut n model.objects))
+                -- |> List.filter (\obj -> getCollide obj |> isJust)
+                |>
+                    List.indexedMap (\n obj -> collide obj (allBut n model.objects))
     in
         ( { model | objects = newObjects }, Just ResolveCollisions )
 
@@ -506,30 +501,40 @@ resolveCollisions dt model =
 -}
 runCollider : Float -> Object -> Object -> Object
 runCollider dt b a =
-    case ( getCollide a, getCollide b ) of
-        ( Just OBB, Just OBB ) ->
-            resolveOBB dt a b
+    let
+        collideOBB obj1 obj2 =
+            Collision.collide (toBody obj1) (toBody obj2)
 
-        ( Just OBBN, Just OBB ) ->
-            resolveOBB dt a b
+        doIt f g =
+            if f a b then
+                g a b
+            else
+                { a | material = Color (vec4 0 1 0 1) }
+    in
+        case ( getCollide a, getCollide b ) of
+            ( Just OBB, Just OBB ) ->
+                doIt collideOBB (resolveOBB dt)
 
-        ( Just OBB, Just OBBN ) ->
-            resolveOBBN dt a b
+            ( Just OBBN, Just OBB ) ->
+                doIt collideOBB (resolveOBB dt)
 
-        ( Just OBBN, Just OBBN ) ->
-            resolveOBBN dt a b
+            ( Just OBB, Just OBBN ) ->
+                doIt collideOBB (resolveOBBN dt)
 
-        ( Just _, Just HeightMap ) ->
-            resolveHeightMap dt a b
+            ( Just OBBN, Just OBBN ) ->
+                doIt collideOBB (resolveOBBN dt)
 
-        ( Just _, Just GJK ) ->
-            a
+            ( Just _, Just HeightMap ) ->
+                resolveHeightMap dt a b
 
-        ( Just GJK, Just _ ) ->
-            a
+            ( Just _, Just GJK ) ->
+                a
 
-        _ ->
-            a
+            ( Just GJK, Just _ ) ->
+                a
+
+            _ ->
+                a
 
 
 resolveOBB : Float -> Object -> Object -> Object
@@ -573,22 +578,35 @@ resolveHeightMap dt a b =
         toXY v =
             ( v.x, v.y )
 
-        uniqueXY mesh =
-            mesh
-                |> List.map (map3L toXY)
-                |> List.Extra.unique
-
-        over =
+        aPoint =
             a.frame.position
                 |> Frame.transformInto b.frame
                 |> eachV2 (flip (/)) (b.scale |> V.fromVec3)
                 |> toXY
 
-        -- flag =
-        --   uniqueXY getMesh
-        --     List.member over
+        toZHull t =
+            (getCached t).zHull
+
+        inPerimeter =
+            Maybe.map toZHull b.drawable
+                |> Maybe.withDefault []
+                |> (flip pointInHull) aPoint
+
+        -- locate triangle
     in
         a
+
+
+pointInHull : List ( Float, Float ) -> ( Float, Float ) -> Bool
+pointInHull perimeter point =
+    let
+        ( x2, y2 ) =
+            point
+
+        cross2 ( x1, y1 ) =
+            (x1 * y2 - x2 * y1) > 0
+    in
+        List.all cross2 perimeter
 
 
 getCollide : Object -> Maybe CollideType

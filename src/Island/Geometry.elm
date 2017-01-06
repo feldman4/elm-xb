@@ -101,6 +101,20 @@ type Dir
     | Straight
 
 
+makeZHull : RawMesh -> List ( Float, Float )
+makeZHull mesh =
+    let
+        toXY v =
+            ( v.x, v.y )
+
+        uniqueXY mesh =
+            mesh
+                |> List.concatMap (map3L (V.fromVec3 >> toXY))
+                |> List.Extra.unique
+    in
+        mesh |> uniqueXY |> hull
+
+
 {-| From notnew/elm-hull. Not sure old-style .head adapted correctly.
 -}
 hull : List ( Float, Float ) -> List ( Float, Float )

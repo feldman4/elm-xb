@@ -6,13 +6,11 @@ import WebGL exposing (Renderable, Shader, Texture, Error)
 import Island.Types exposing (..)
 import Meshes exposing (icosphere, subdivide)
 import Island.Geometry exposing (..)
-import Frame
+import Frame exposing (Frame)
 import Vector as V exposing (Vector)
 import Quaternion as Q
 import Task
 import Collision
-import EveryDict exposing (EveryDict)
-import Lazy exposing (Lazy)
 
 
 lightSource : Vec3
@@ -33,10 +31,12 @@ textureURL : NamedTexture -> String
 textureURL name =
     case name of
         Crate ->
-            "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/woodCrate.jpg"
+            -- "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/woodCrate.jpg"
+            "http://i144.photobucket.com/albums/r196/salombo_photos/AB%20Seasons%20Game%20Icons/ABS_SPIcon.jpg"
 
         Thwomp ->
-            "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/thwomp_face.jpg"
+            -- "https://raw.githubusercontent.com/elm-community/webgl/master/examples/texture/thwomp_face.jpg"
+            "http://i144.photobucket.com/albums/r196/salombo_photos/AB%20Seasons%20Game%20Icons/ABS_GGGLIcon.jpg"
 
         DisplacementMap ->
             "http://i144.photobucket.com/albums/r196/salombo_photos/AB%20Seasons%20Game%20Icons/ABS_SPIcon.jpg"
@@ -75,94 +75,109 @@ textureAction name =
 --
 --         NormalMap ->
 --             "file:///Users/feldman/packages/elm-xb/resources/angry_picnic.jpg"
+-- getThing : Thing -> WebGL.Drawable Attribute
+-- getThing thing =
+--     case thing of
+--         Boat ->
+--             initBoatDrawable.drawable
+--
+--         Face ->
+--             initFaceDrawable
+--
+--         LightCube ->
+--             initLightCubeDrawable
+--
+--         SeaSphere ->
+--             initSeaSphereDrawable
+--
+--
+--         Island ->
+--             initIslandDrawable.drawable
 
 
-getThing : Thing -> WebGL.Drawable Attribute
-getThing thing =
-    case thing of
-        Boat ->
-            initBoatDrawable.drawable
-
-        Face ->
-            initFaceDrawable
-
-        LightCube ->
-            initLightCubeDrawable
-
-        SeaSphere ->
-            initSeaSphereDrawable
-
-        Ocean ->
-            initOceanDrawable
-
-        Island ->
-            initIslandDrawable.drawable
+type alias Cached =
+    { drawable : WebGL.Drawable Attribute
+    , bounds : Collision.Bounds
+    , zHull : List ( Float, Float )
+    }
 
 
-getBounds : Thing -> Maybe Collision.Bounds
-getBounds thing =
-    case thing of
-        Island ->
-            Just initIslandDrawable.bounds
+buildCache : RawMesh -> Cached
+buildCache mesh =
+    let
+        a =
+            Debug.log "build cache" 0
+    in
+        { drawable = mesh |> indexMesh |> meshToTriangle
+        , bounds = makeBounds mesh
+        , zHull = makeZHull mesh
+        }
 
-        Boat ->
-            Just initBoatDrawable.bounds
 
-        _ ->
-            Nothing
+islandCache : Cached
+islandCache =
+    buildCache initIslandDrawable
 
 
-{-| Memoized
--}
-getMesh : Thing -> RawMesh
-getMesh thing =
-    case thing of
-        Island ->
-            island
+boatCache : Cached
+boatCache =
+    let
+        bounds =
+            cube |> List.map (map3T (V3.scale 0.3)) |> makeBounds
+    in
+        buildCache boat
+            |> (\x -> { x | bounds = bounds })
 
-        _ ->
-            island
+
+lightCubeCache : Cached
+lightCubeCache =
+    buildCache cube
+
+
+oceanCache : Cached
+oceanCache =
+    buildCache []
+        |> (\x -> { x | drawable = initOceanDrawable })
+
+
+faceCache : Cached
+faceCache =
+    buildCache face
 
 
 {-|
 -}
-apply : EveryDict b (Lazy a) -> b -> Maybe a
-apply dict =
-    \arg -> Maybe.map Lazy.force (EveryDict.get arg dict)
+getCached : Thing -> Cached
+getCached thing =
+    case thing of
+        Island ->
+            islandCache
 
+        Boat ->
+            boatCache
 
-{-| adapted from jvoigtlaender/elm-memo
--}
-memo : (a -> b) -> List a -> a -> Maybe b
-memo fun args =
-    apply (EveryDict.fromList (List.map (\arg -> ( arg, Lazy.lazy (\() -> fun arg) )) args))
+        LightCube ->
+            lightCubeCache
 
+        Ocean ->
+            oceanCache
 
-{-| Can't find a good way to memoize function with union type argument, except
-by writing full pattern match every time.
--}
-memoMesh : (RawMesh -> a) -> Thing -> a
-memoMesh f =
-    let
-        g x =
-            f (getMesh x)
-    in
-        (\x ->
-            (memo g allThings x)
-                |> Maybe.withDefault (Debug.crash ("bad request: " ++ toString x) f [])
-        )
+        Face ->
+            faceCache
 
-
-mMakeBounds : Thing -> Collision.Bounds
-mMakeBounds =
-    memoMesh makeBounds
+        _ ->
+            lightCubeCache
 
 
 toBody : Object -> Collision.Body {}
 toBody obj =
-    { frame = obj.frame
-    , bounds = Maybe.andThen getBounds obj.drawable |> Maybe.withDefault Collision.empty
-    }
+    let
+        getBounds t =
+            (getCached t).bounds
+    in
+        { frame = obj.frame
+        , bounds = Maybe.map getBounds obj.drawable |> Maybe.withDefault Collision.empty
+        }
 
 
 
@@ -188,7 +203,7 @@ initAvatar =
         , scale = vec3 0.3 0.3 0.3
         , material = Color (vec4 0.7 0.7 0.9 1.0)
         , frame = Frame.identity |> Frame.extrinsicNudge (Vector 2.1 2.1 2.1)
-        , effects = [ MainControl 2, View, Collide OBB, Gravity 1, Motion, Floating defaultFloating ]
+        , effects = [ MainControl 2, View, Collide OBBN, Gravity 1, Motion, Floating defaultFloating ]
     }
 
 
@@ -345,7 +360,7 @@ initSeaSphereDrawable =
         indexedMesh |> useCornerNormals |> meshToTriangle
 
 
-initIslandDrawable : BoundedDrawable Attribute
+initIslandDrawable : RawMesh
 initIslandDrawable =
     let
         frame =
@@ -358,18 +373,11 @@ initIslandDrawable =
             centroid island
                 |> V3.scale -1
                 |> offset island
-                |> List.map (map3T (V3.scale 8))
+                |> List.map (map3T (V3.scale 20))
                 |> scale3D (vec3 1 1 1)
                 |> List.map (map3T rotate)
     in
-        { drawable =
-            mesh
-                |> indexMesh
-                |> useCornerNormals
-                |> invertIndexedNormals
-                |> meshToTriangle
-        , bounds = makeBounds mesh
-        }
+        mesh
 
 
 initFaceDrawable : WebGL.Drawable Attribute
