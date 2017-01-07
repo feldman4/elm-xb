@@ -32,8 +32,8 @@ map3L f ( a, b, c ) =
 
 
 map3R : (a -> a -> a -> b) -> ( a, a, a ) -> ( b, b, b )
-map3R f ( p, r, q ) =
-    ( f p r q, f r q p, f q p r )
+map3R f ( p, q, r ) =
+    ( f p q r, f q r p, f r p q )
 
 
 isJust : Maybe a -> Bool
@@ -61,13 +61,13 @@ wFrameToFrame wFrame =
     }
 
 
-type Tree a
-    = Node ( Vector, Tree a, Tree a )
+type VTree a
+    = Node ( Vector, VTree a, VTree a )
     | Leaf a
     | Empty
 
 
-buildTree : (List a -> Vector) -> (Vector -> a -> Bool) -> List a -> Tree a
+buildTree : (List a -> Vector) -> (Vector -> a -> Bool) -> List a -> VTree a
 buildTree separate test parts =
     case parts of
         [] ->
@@ -93,7 +93,7 @@ buildTree separate test parts =
 {-| For cases when the same item may appear in both branches, e.g., triangles
 separated by a plane.
 -}
-buildTree2 : (List a -> ( Vector, List a, List a )) -> List a -> Tree a
+buildTree2 : (List a -> ( Vector, List a, List a )) -> List a -> VTree a
 buildTree2 separate parts =
     case parts of
         [] ->
@@ -113,7 +113,7 @@ buildTree2 separate parts =
                 Node ( v, b left, b right )
 
 
-queryTree : (Vector -> Bool) -> Tree a -> Maybe a
+queryTree : (Vector -> Bool) -> VTree a -> Maybe a
 queryTree test tree =
     case tree of
         Empty ->
@@ -129,35 +129,35 @@ queryTree test tree =
                 queryTree test right
 
 
-type alias XY =
-    ( Float, Float )
+type alias XY a =
+    { a | x : Float, y : Float }
+
+
+type alias XYZ =
+    XY { z : Float }
 
 
 type alias TriMesh a =
     List ( a, a, a )
 
 
-meshToXY : RawMesh -> TriMesh XY
+meshToXY : RawMesh -> TriMesh (XY { z : Float })
 meshToXY mesh =
-    let
-        toXY v =
-            ( V3.getX v, V3.getY v )
-    in
-        mesh |> List.map (map3T toXY)
+    mesh |> List.map (map3T V3.toRecord)
 
 
 {-| Get a vector for inclusion testing from the RQ edge of 2D triangle PRQ.
 Returns Nothing if the triangle has zero area.
 CCW.
 -}
-edgeVector : XY -> XY -> XY -> Maybe Vector
-edgeVector ( p1, p2 ) ( r1, r2 ) ( q1, q2 ) =
+edgeVector : XY a -> XY a -> XY a -> Maybe Vector
+edgeVector p r q =
     let
         a =
-            Vector (q1 - r1) (q2 - r2) 0
+            Vector (q.x - r.x) (q.y - r.y) 0
 
         b =
-            Vector (p1 - r1) (p2 - r2) 0
+            Vector (p.x - r.x) (p.y - r.y) 0
 
         up =
             V.cross a b
@@ -169,22 +169,22 @@ edgeVector ( p1, p2 ) ( r1, r2 ) ( q1, q2 ) =
                 up |> V.cross b |> V.normalize
 
         bias =
-            Maybe.map (\x -> V.dot x (Vector r1 r2 0)) w
+            Maybe.map (\x -> V.dot x (Vector r.x r.y 0)) w
     in
         Maybe.map2 (\w b -> Vector w.x w.y b) w bias
 
 
-test2DTriangle : Vector -> ( XY, XY, XY ) -> Bool
+test2DTriangle : Vector -> ( XY a, XY a, XY a ) -> Bool
 test2DTriangle v tri =
     let
-        test ( x, y ) =
-            (V.dot (Vector x y -1) v) >= eps
+        test x =
+            (V.dot (Vector x.x x.y -1) v) >= eps
     in
         -- tri |> shrinkTriangle 0.01 |> map3L test |> List.any identity
         tri |> map3L test |> List.any identity
 
 
-leftRightSplit : (Vector -> ( XY, XY, XY ) -> Bool) -> Vector -> TriMesh XY -> ( TriMesh XY, TriMesh XY )
+leftRightSplit : (Vector -> ( XY a, XY a, XY a ) -> Bool) -> Vector -> TriMesh (XY a) -> ( TriMesh (XY a), TriMesh (XY a) )
 leftRightSplit test v triangles =
     let
         left =
@@ -200,12 +200,12 @@ leftRightSplit test v triangles =
 
 {-| only takes upward facing triangles
 -}
-splitTriangles : TriMesh XY -> ( Vector, TriMesh XY, TriMesh XY )
+splitTriangles : TriMesh (XY a) -> ( Vector, TriMesh (XY a), TriMesh (XY a) )
 splitTriangles inputTriangles =
     let
         triangles =
             inputTriangles
-                |> List.filter (\( p, r, q ) -> edgeVector p r q |> isJust)
+                |> List.filter (\( p, q, r ) -> edgeVector p q r |> isJust)
 
         points =
             triangles |> List.concatMap (map3L identity)
@@ -219,8 +219,8 @@ splitTriangles inputTriangles =
         trouble =
             max (List.length left) (List.length right) >= List.length triangles
 
-        -- z =
-        --     Debug.log "# triangles:" (List.length triangles)
+        z =
+            Debug.log "# triangles:" (List.length triangles)
     in
         if trouble then
             let
@@ -242,19 +242,19 @@ splitTriangles inputTriangles =
                 ( left2, right2 ) =
                     leftRightSplit test2DTriangle v2 triangles
 
-                -- z =
-                --     Debug.log "trouble" ( List.length left2, List.length right2, v2, triangles )
+                z =
+                    Debug.log "trouble" ( List.length left2, List.length right2, v2, triangles )
             in
                 ( v2, left2, right2 )
         else
             ( v, left, right )
 
 
-split2D : List ( Float, Float ) -> Vector
+split2D : List (XY a) -> Vector
 split2D parts =
     let
         points =
-            parts |> List.map (\( x, y ) -> Vector x y 0)
+            parts |> List.map (\{ x, y } -> Vector x y 0)
 
         sum =
             List.foldl V.add (Vector 0 0 0)
@@ -298,23 +298,22 @@ split2D parts =
 
 {-| s is small
 -}
-shrinkTriangle : Float -> ( XY, XY, XY ) -> ( XY, XY, XY )
-shrinkTriangle s ( ( p1, p2 ), ( r1, r2 ), ( q1, q2 ) ) =
+shrinkTriangle : Float -> ( XY a, XY a, XY a ) -> ( XY a, XY a, XY a )
+shrinkTriangle s ( p, q, r ) =
     let
-        c1 =
-            (p1 + r1 + q1) / 3
+        c =
+            { x = (p.x + q.x + r.x) / 3
+            , y = (p.y + q.y + r.y) / 3
+            }
 
-        c2 =
-            (p2 + r2 + q2) / 3
-
-        shrink x1 x2 =
-            ( x1 + (c1 - x1) * s, x2 + (c2 - x2) * s )
+        shrink x =
+            { x | x = x.x + (c.x - x.x) * s, y = x.y + (c.y - x.y) * s }
     in
-        ( shrink p1 p2, shrink r1 r2, shrink q1 q2 )
+        ( shrink p, shrink q, shrink r )
 
 
-test2D : ( Float, Float ) -> Vector -> Bool
-test2D ( x, y ) v =
+test2D : XY a -> Vector -> Bool
+test2D { x, y } v =
     V.dot (Vector x y -1) v >= -eps
 
 
@@ -322,7 +321,7 @@ type alias M2 =
     ( Float, Float, Float, Float )
 
 
-inTriangle : XY -> ( XY, XY, XY ) -> Bool
+inTriangle : XY a -> ( XY b, XY b, XY b ) -> Bool
 inTriangle pt triangle =
     let
         ( e1, e2, e3 ) =

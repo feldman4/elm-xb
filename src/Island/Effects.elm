@@ -1,7 +1,7 @@
 port module Island.Effects exposing (..)
 
 import Island.Types exposing (..)
-import Island.Geometry exposing (map3T, map3L, scale3D, wFrameToFrame, reflect, eachV2, isJust)
+import Island.Geometry exposing (map3T, map3L, scale3D, wFrameToFrame, reflect, eachV2, isJust, queryTree, test2D, inTriangle)
 import Island.Things exposing (getCached, toBody, boat, island, cube)
 import Minimum as M exposing (angleBetween, foldla, toButton)
 import Frame exposing (Frame)
@@ -565,26 +565,69 @@ resolveOBBN dt a b =
 resolveHeightMap : Float -> Object -> Object -> Object
 resolveHeightMap dt a b =
     let
-        toXY v =
-            ( v.x, v.y )
-
-        aPoint =
+        queryPoint =
             a.frame.position
                 |> Frame.transformInto b.frame
                 |> eachV2 (flip (/)) (b.scale |> V.fromVec3)
-                |> toXY
 
-        toZHull t =
-            (getCached t).zHull
+        -- toZHull t =
+        --     (getCached t).zHull
+        --
+        -- inPerimeter =
+        --     Maybe.map toZHull b.drawable
+        --         |> Maybe.withDefault []
+        --         |> (flip pointInHull) aPoint
+        toZTree t =
+            (getCached t).zTree
 
-        inPerimeter =
-            Maybe.map toZHull b.drawable
-                |> Maybe.withDefault []
-                |> (flip pointInHull) aPoint
+        interpolateHeight u ( p, q, r ) =
+            let
+                ( a, b, c, d ) =
+                    ( p.x - r.x, q.x - r.x, p.y - r.y, q.y - r.y )
 
-        -- locate triangle
+                det =
+                    a * d - b * c
+
+                l1 =
+                    (d * (u.x - r.x) - b * (u.y - r.y)) / det
+
+                l2 =
+                    (a * (u.y - r.y) - c * (u.x - r.x)) / det
+
+                l3 =
+                    1 - l1 - l2
+            in
+                if det < 1.0e-5 then
+                    Nothing
+                else
+                    Just { u | z = max (u.z) (l1 * p.z + l2 * q.z + l3 * r.z) }
+
+        maybeInTriangle point triangle =
+            if inTriangle point triangle then
+                Just triangle
+            else
+                Nothing
+
+        height : Maybe Float
+        height =
+            Maybe.map toZTree b.drawable
+                |> Maybe.andThen (queryTree (test2D queryPoint))
+                |> Maybe.andThen (maybeInTriangle queryPoint)
+                |> Maybe.andThen (interpolateHeight queryPoint)
+                |> Maybe.map (eachV2 (*) (b.scale |> V.fromVec3))
+                |> Maybe.map (Frame.transformOutOf b.frame)
+                |> Maybe.map .z
     in
-        a
+        case height of
+            Just z ->
+                let
+                    p =
+                        a.frame.position
+                in
+                    { a | frame = Frame.setPosition { p | z = z } a.frame }
+
+            Nothing ->
+                a
 
 
 pointInHull : List ( Float, Float ) -> ( Float, Float ) -> Bool

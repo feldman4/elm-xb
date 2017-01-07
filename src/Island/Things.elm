@@ -98,7 +98,9 @@ textureAction name =
 type alias Cached =
     { drawable : WebGL.Drawable Attribute
     , bounds : Collision.Bounds
-    , zHull : List ( Float, Float )
+    , zHull :
+        List ( Float, Float )
+    , zTree : VTree ( XYZ, XYZ, XYZ )
     }
 
 
@@ -110,13 +112,20 @@ buildCache mesh =
     in
         { drawable = mesh |> indexMesh |> meshToTriangle
         , bounds = makeBounds mesh
-        , zHull = makeZHull mesh
+        , zHull =
+            makeZHull mesh
+        , zTree = Empty
         }
 
 
 islandCache : Cached
 islandCache =
-    buildCache initIslandDrawable
+    let
+        zTree =
+            initIslandDrawable |> meshToXY |> (buildTree2 splitTriangles)
+    in
+        buildCache initIslandDrawable
+            |> (\x -> { x | zTree = zTree })
 
 
 boatCache : Cached
@@ -220,10 +229,10 @@ initIsland =
     { defaultObject
         | drawable = Just Island
         , material = Color (vec4 (170 / 255.0) (108 / 255.0) (57 / 255.0) 1.0)
-        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 0 0 -2)
+        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 0 0 -4)
         , scale = vec3 1 1 1
         , velocity = Nothing
-        , effects = [ Collide OBB ]
+        , effects = [ Collide HeightMap ]
     }
 
 
@@ -364,7 +373,7 @@ initIslandDrawable : RawMesh
 initIslandDrawable =
     let
         frame =
-            Frame.identity |> Frame.intrinsicRotate (Q.xRotation 1)
+            Frame.identity |> Frame.intrinsicRotate (Q.xRotation 0)
 
         rotate v =
             v |> V.fromVec3 |> Frame.transformOutOf frame |> V.toVec3
