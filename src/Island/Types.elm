@@ -9,6 +9,7 @@ import Frame exposing (Frame)
 import Vector exposing (Vector)
 import EveryDict
 import Collision
+import VTree exposing (VTree, XYZ)
 
 
 type NamedInteraction
@@ -48,10 +49,6 @@ type CollideType
     | OBB
     | OBBN
     | HeightMap
-
-
-
--- g
 
 
 type Action
@@ -137,20 +134,33 @@ type Material
     | OceanTexture ( NamedTexture, NamedTexture )
 
 
+type alias Cached =
+    { drawable : WebGL.Drawable Attribute
+    , bounds : Collision.Bounds
+    , zHull :
+        List ( Float, Float )
+    , zTree : VTree ( XYZ, XYZ, XYZ )
+    }
+
+
 
 -- OBJECTS, EFFECTS, INTERACTIONS
 
 
-type alias WFrame =
-    { position : Vector, omega : Vector, omegaInst : Vector }
+{-| Carries normal velocity and instantaneous displacement. The Motion effect
+applies instantaneous displacement without taking into account dt and
+sets the value to zero. (?)
+-}
+type alias VFrame =
+    { position : Vector
+    , positionInst : Vector
+    , omega : Vector
+    , omegaInst : Vector
+    }
 
 
 type alias Particle =
     { position : Vec3, mass : Float }
-
-
-type alias Rigid a =
-    { a | nodes : List Particle }
 
 
 {-|
@@ -160,9 +170,9 @@ type alias Object =
     { drawable : Maybe Thing
     , material : Material
     , frame : Frame.Frame
-    , scale : Vec3
+    , scale : Vector
     , effects : List NamedEffect
-    , velocity : Maybe WFrame
+    , velocity : Maybe VFrame
     }
 
 
@@ -170,13 +180,8 @@ type alias RenderableObject =
     { drawable : Thing
     , material : Material
     , frame : Frame.Frame
-    , scale : Vec3
+    , scale : Vector
     }
-
-
-
--- | Vision
---
 
 
 {-| Orbital: to get perspective,
@@ -198,27 +203,6 @@ type alias Effect =
 -- NEXT
 
 
-{-| For rendering
--}
-type alias Attribute =
-    { position : Vec3
-    , coords : Vec3
-    , normal : Vec3
-    }
-
-
-type alias PQ a =
-    { a | position : Vec3, quaternion : Vec4 }
-
-
-type alias MeshPQ =
-    PQ { mesh : RawMesh }
-
-
-type alias IndexedMeshPQ =
-    PQ { mesh : Mesh }
-
-
 type alias Modeled =
     { objects : List Object
     , textures : EveryDict.EveryDict NamedTexture Texture
@@ -234,6 +218,13 @@ type alias Model =
 
 
 -- Shaders
+
+
+type alias Attribute =
+    { position : Vec3
+    , coords : Vec3
+    , normal : Vec3
+    }
 
 
 type alias Edged a =

@@ -4,8 +4,10 @@ import Math.Vector3 as V3 exposing (vec3, Vec3)
 import Math.Vector4 as V4 exposing (vec4, Vec4)
 import WebGL exposing (Renderable, Shader, Texture, Error)
 import Island.Types exposing (..)
+import Utilities exposing (..)
 import Meshes exposing (icosphere, subdivide)
 import Island.Geometry exposing (..)
+import VTree exposing (VTree, splitTriangles, buildTree2, meshToXY)
 import Frame exposing (Frame)
 import Vector as V exposing (Vector)
 import Quaternion as Q
@@ -95,15 +97,6 @@ textureAction name =
 --             initIslandDrawable.drawable
 
 
-type alias Cached =
-    { drawable : WebGL.Drawable Attribute
-    , bounds : Collision.Bounds
-    , zHull :
-        List ( Float, Float )
-    , zTree : VTree ( XYZ, XYZ, XYZ )
-    }
-
-
 buildCache : RawMesh -> Cached
 buildCache mesh =
     let
@@ -114,7 +107,7 @@ buildCache mesh =
         , bounds = makeBounds mesh
         , zHull =
             makeZHull mesh
-        , zTree = Empty
+        , zTree = VTree.Empty
         }
 
 
@@ -198,7 +191,7 @@ defaultObject =
     { drawable = Just Boat
     , material = Color (vec4 0.7 0.7 0.7 1.0)
     , frame = Frame.identity
-    , scale = vec3 1 1 1
+    , scale = Vector 1 1 1
     , effects = []
     , velocity = Nothing
     }
@@ -208,8 +201,8 @@ initAvatar : Object
 initAvatar =
     { defaultObject
         | drawable = Just Boat
-        , velocity = Just (Frame.identity |> frameToWFrame)
-        , scale = vec3 0.3 0.3 0.3
+        , velocity = Just (Frame.identity |> frameToVFrame)
+        , scale = Vector 0.3 0.3 0.3
         , material = Color (vec4 0.7 0.7 0.9 1.0)
         , frame = Frame.identity |> Frame.extrinsicNudge (Vector 2.1 2.1 2.1)
         , effects = [ MainControl 2, View, Collide OBBN, Gravity 1, Motion, Floating defaultFloating ]
@@ -230,7 +223,7 @@ initIsland =
         | drawable = Just Island
         , material = Color (vec4 (170 / 255.0) (108 / 255.0) (57 / 255.0) 1.0)
         , frame = Frame.identity |> Frame.extrinsicNudge (Vector 0 0 -4)
-        , scale = vec3 1 1 1
+        , scale = Vector 1 1 1
         , velocity = Nothing
         , effects = [ Collide HeightMap ]
     }
@@ -245,7 +238,7 @@ initBoat =
             Frame.identity
                 |> Frame.extrinsicNudge (Vector 0 0 10)
             -- |> Frame.intrinsicRotate (Quaternion.yRotation 2 |> Quaternion.compose (Quaternion.zRotation 0))
-        , velocity = Just (Frame.identity |> frameToWFrame)
+        , velocity = Just (Frame.identity |> frameToVFrame)
         , effects =
             [ Floating defaultFloating
             , Gravity 1
@@ -263,7 +256,7 @@ initOcean =
         , frame =
             Frame.identity
                 |> Frame.extrinsicNudge (Vector -15 -15 -4)
-        , scale = vec3 30 30 1
+        , scale = Vector 30 30 1
     }
 
 
@@ -318,7 +311,8 @@ initLightCubeDrawable =
         x =
             centroid cube |> V3.scale -1
     in
-        offset cube x
+        cube
+            |> List.map (map3T (V3.add x))
             |> indexMesh
             -- |> invertIndexedNormals
             |>
@@ -345,7 +339,10 @@ initOceanDrawable =
         sea =
             makeGrid resolution resolution |> List.concatMap quadToTri
     in
-        sea |> eachMeshPoint (V3.scale (1.0 / (toFloat resolution))) |> indexMesh |> meshToTriangle
+        sea
+            |> List.map (map3T (V3.scale (1.0 / (toFloat resolution))))
+            |> indexMesh
+            |> meshToTriangle
 
 
 initSeaSphereDrawable : WebGL.Drawable Attribute
@@ -358,8 +355,9 @@ initSeaSphereDrawable =
             centroid sea |> V3.scale -1
 
         mesh =
-            offset sea x
-                |> eachMeshPoint (V3.scale 10)
+            sea
+                |> List.map (map3T (V3.add x))
+                |> List.map (map3T (V3.scale 10))
 
         indexedMesh =
             mesh
@@ -378,12 +376,14 @@ initIslandDrawable =
         rotate v =
             v |> V.fromVec3 |> Frame.transformOutOf frame |> V.toVec3
 
+        x =
+            island |> centroid |> V3.scale -1
+
         mesh =
-            centroid island
-                |> V3.scale -1
-                |> offset island
+            island
+                |> List.map (map3T (V3.add x))
                 |> List.map (map3T (V3.scale 20))
-                |> scale3D (vec3 1 1 1)
+                |> scale3D (Vector 1 1 1)
                 |> List.map (map3T rotate)
     in
         mesh
@@ -401,9 +401,10 @@ initCube =
             centroid cube |> V3.scale -1
 
         mesh =
-            offset cube x
-                |> eachMeshPoint (V3.scale 3.1)
-                |> eachMeshPoint (V3.add (vec3 0 0 0))
+            cube
+                |> List.map (map3T (V3.add x))
+                |> List.map (map3T (V3.scale 3.1))
+                |> List.map (map3T (V3.add (vec3 0 0 0)))
     in
         mesh |> indexMesh |> invertIndexedNormals
 

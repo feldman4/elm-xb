@@ -45,7 +45,7 @@ renderObject { window, camera, textures } object =
             (getCached object.drawable).drawable
 
         transform =
-            M4.mul (object.frame |> Frame.toMat4) (M4.makeScale object.scale)
+            M4.mul (object.frame |> Frame.toMat4) (M4.makeScale (V.toVec3 object.scale))
 
         normalMatrix =
             object.frame

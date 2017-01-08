@@ -1,8 +1,9 @@
 port module Island.Effects exposing (..)
 
 import Island.Types exposing (..)
-import Island.Geometry exposing (map3T, map3L, scale3D, wFrameToFrame, reflect, eachV2, isJust, queryTree, test2D, inTriangle)
+import Island.Geometry exposing (scale3D, vFrameToFrame, reflect, eachV2)
 import Island.Things exposing (getCached, toBody, boat, island, cube)
+import VTree exposing (queryTree, test2D, inTriangle)
 import Minimum as M exposing (angleBetween, foldla, toButton)
 import Frame exposing (Frame)
 import Math.Vector4 as V4 exposing (vec4)
@@ -314,59 +315,6 @@ delete model =
         ( { model | objects = newObjects }, Just Deletion )
 
 
-
---
--- detectCollisionsGJK : Model -> ( Model, Maybe NamedInteraction )
--- detectCollisionsGJK model =
---     let
---         hasCollide obj =
---             List.member Collide obj.effects
---
---         getMesh obj =
---             let
---                 mesh =
---                     case obj.drawable of
---                         Just LightCube ->
---                             cube
---
---                         Just Boat ->
---                             boat
---
---                         Just Island ->
---                             island
---
---                         _ ->
---                             []
---             in
---                 mesh
---                     |> scale3D obj.scale
---                     |> List.map (map3T V.fromVec3)
---                     |> List.map (map3T (Frame.transformOutOf obj.frame))
---
---         collide obj rest =
---             if hasCollide obj then
---                 let
---                     noHit =
---                         rest
---                             |> List.filter hasCollide
---                             |> List.filterMap (\x -> GJK.gjk (getMesh obj) (getMesh x))
---                             |> List.isEmpty
---                 in
---                     if noHit then
---                         { obj | material = Color (vec4 0.6 0.6 0.6 1) }
---                     else
---                         { obj | material = Color (vec4 0 0 1 1) }
---             else
---                 obj
---
---         markColliders objects =
---             objects
---                 |> List.indexedMap (\n obj -> collide obj (allBut n objects))
---     in
---         ( { model | objects = markColliders model.objects }, Just DetectCollisionsGJK )
--- ( { model | objects = markColliders model.objects }, Nothing )
-
-
 {-| Zero-indexed.
 -}
 allBut : Int -> List a -> List a
@@ -394,7 +342,11 @@ undoCollision dt object =
                     Vector v.position.x v.position.y 0.05
 
                 zeroVelocity =
-                    { position = reversed, omega = Vector 0 0 0, omegaInst = Vector 0 0 0 }
+                    { position = reversed
+                    , positionInst = Vector 0 0 0
+                    , omega = Vector 0 0 0
+                    , omegaInst = Vector 0 0 0
+                    }
             in
                 { newObject | velocity = Just zeroVelocity }
 
@@ -450,7 +402,11 @@ undoCollisionNormal dt normal surface object =
                     reflect normal v.position
 
                 newV =
-                    { position = reflectZ, omega = Vector 0 0 0, omegaInst = Vector 0 0 0 }
+                    { position = reflectZ
+                    , positionInst = Vector 0 0 0
+                    , omega = Vector 0 0 0
+                    , omegaInst = Vector 0 0 0
+                    }
 
                 newObject =
                     undoMotion (t + tol) object
@@ -568,7 +524,7 @@ resolveHeightMap dt a b =
         queryPoint =
             a.frame.position
                 |> Frame.transformInto b.frame
-                |> eachV2 (flip (/)) (b.scale |> V.fromVec3)
+                |> eachV2 (flip (/)) b.scale
 
         -- toZHull t =
         --     (getCached t).zHull
@@ -614,7 +570,7 @@ resolveHeightMap dt a b =
                 |> Maybe.andThen (queryTree (test2D queryPoint))
                 |> Maybe.andThen (maybeInTriangle queryPoint)
                 |> Maybe.andThen (interpolateHeight queryPoint)
-                |> Maybe.map (eachV2 (*) (b.scale |> V.fromVec3))
+                |> Maybe.map (eachV2 (*) b.scale)
                 |> Maybe.map (Frame.transformOutOf b.frame)
                 |> Maybe.map .z
     in
@@ -764,7 +720,7 @@ requestOcean model =
         findInOcean oc object =
             object.frame.position
                 |> Frame.transformInto oc.frame
-                |> dotApply (flip (/)) (oc.scale |> V.fromVec3)
+                |> dotApply (flip (/)) oc.scale
                 |> V.toTuple
                 |> inRange
 
@@ -850,7 +806,7 @@ updateFloating model coordinates height object =
                 let
                     -- ocean vertical scale applied in shader, not to mesh
                     offset h =
-                        h * (V3.getZ oc.scale) + (V.getZ oc.frame.position)
+                        h * oc.scale.z + oc.frame.position.z
                 in
                     { object | effects = object.effects |> List.map (update offset) }
 
@@ -1021,7 +977,7 @@ applyInteractions action model =
         ( { finalModel | interactions = finalInts }, Cmd.batch finalActions )
 
 
-control : Model -> Float -> Frame -> WFrame -> WFrame
+control : Model -> Float -> Frame -> VFrame -> VFrame
 control model delta frame vFrame =
     let
         -- change in velocity
@@ -1055,6 +1011,7 @@ control model delta frame vFrame =
                 V.add vFrame.position dV
                     |> clampVelocity 10 50
                     |> V.scale decay
+            , positionInst = Vector 0 0 0
             , omega = vFrame.omega
             , omegaInst = dW2
             }

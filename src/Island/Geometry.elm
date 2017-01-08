@@ -1,9 +1,9 @@
 module Island.Geometry exposing (..)
 
-import Math.Vector4 exposing (vec4, Vec4)
 import Math.Vector3 exposing (vec3, Vec3)
 import Math.Vector3 as V3
 import Island.Types exposing (..)
+import Utilities exposing (..)
 import List.Extra
 import Dict
 import Dict.Extra exposing (groupBy)
@@ -14,343 +14,24 @@ import Quaternion as Q
 import Frame exposing (Frame)
 
 
-{-| Tolerance for plane tests and the like.
+{-| Velocity expressed with rotation vector omega. Instantaneous component is
+set to zero at the end of animate cycle, after displacement and collision
+resolution. Damping of regular velocity occurs in Control Effect.
 -}
-eps : Float
-eps =
-    0.001
-
-
-map3T : (a -> b) -> ( a, a, a ) -> ( b, b, b )
-map3T f ( a, b, c ) =
-    ( f a, f b, f c )
-
-
-map3L : (a -> b) -> ( a, a, a ) -> List b
-map3L f ( a, b, c ) =
-    [ f a, f b, f c ]
-
-
-map3R : (a -> a -> a -> b) -> ( a, a, a ) -> ( b, b, b )
-map3R f ( p, q, r ) =
-    ( f p q r, f q r p, f r p q )
-
-
-isJust : Maybe a -> Bool
-isJust a =
-    case a of
-        Just _ ->
-            True
-
-        Nothing ->
-            False
-
-
-frameToWFrame : Frame -> WFrame
-frameToWFrame frame =
+frameToVFrame : Frame -> VFrame
+frameToVFrame frame =
     { position = frame.position
+    , positionInst = Vector 0 0 0
     , omega = Q.toVector frame.orientation
     , omegaInst = Vector 0 0 0
     }
 
 
-wFrameToFrame : WFrame -> Frame
-wFrameToFrame wFrame =
+vFrameToFrame : VFrame -> Frame
+vFrameToFrame wFrame =
     { position = wFrame.position
     , orientation = Q.fromVector (V.add wFrame.omega wFrame.omegaInst)
     }
-
-
-type VTree a
-    = Node ( Vector, VTree a, VTree a )
-    | Leaf a
-    | Empty
-
-
-buildTree : (List a -> Vector) -> (Vector -> a -> Bool) -> List a -> VTree a
-buildTree separate test parts =
-    case parts of
-        [] ->
-            Empty
-
-        x :: [] ->
-            Leaf x
-
-        x :: xs ->
-            let
-                v =
-                    separate parts
-
-                ( left, right ) =
-                    parts |> List.partition (test v)
-
-                b =
-                    buildTree separate test
-            in
-                Node ( v, b left, b right )
-
-
-{-| For cases when the same item may appear in both branches, e.g., triangles
-separated by a plane.
--}
-buildTree2 : (List a -> ( Vector, List a, List a )) -> List a -> VTree a
-buildTree2 separate parts =
-    case parts of
-        [] ->
-            Empty
-
-        x :: [] ->
-            Leaf x
-
-        x :: xs ->
-            let
-                ( v, left, right ) =
-                    separate parts
-
-                b =
-                    buildTree2 separate
-            in
-                Node ( v, b left, b right )
-
-
-queryTree : (Vector -> Bool) -> VTree a -> Maybe a
-queryTree test tree =
-    case tree of
-        Empty ->
-            Nothing
-
-        Leaf a ->
-            Just a
-
-        Node ( v, left, right ) ->
-            if test v then
-                queryTree test left
-            else
-                queryTree test right
-
-
-type alias XY a =
-    { a | x : Float, y : Float }
-
-
-type alias XYZ =
-    XY { z : Float }
-
-
-type alias TriMesh a =
-    List ( a, a, a )
-
-
-meshToXY : RawMesh -> TriMesh (XY { z : Float })
-meshToXY mesh =
-    mesh |> List.map (map3T V3.toRecord)
-
-
-{-| Get a vector for inclusion testing from the RQ edge of 2D triangle PRQ.
-Returns Nothing if the triangle has zero area.
-CCW.
--}
-edgeVector : XY a -> XY a -> XY a -> Maybe Vector
-edgeVector p r q =
-    let
-        a =
-            Vector (q.x - r.x) (q.y - r.y) 0
-
-        b =
-            Vector (p.x - r.x) (p.y - r.y) 0
-
-        up =
-            V.cross a b
-
-        w =
-            if up.z <= eps then
-                Nothing
-            else
-                up |> V.cross b |> V.normalize
-
-        bias =
-            Maybe.map (\x -> V.dot x (Vector r.x r.y 0)) w
-    in
-        Maybe.map2 (\w b -> Vector w.x w.y b) w bias
-
-
-test2DTriangle : Vector -> ( XY a, XY a, XY a ) -> Bool
-test2DTriangle v tri =
-    let
-        test x =
-            (V.dot (Vector x.x x.y -1) v) >= eps
-    in
-        -- tri |> shrinkTriangle 0.01 |> map3L test |> List.any identity
-        tri |> map3L test |> List.any identity
-
-
-leftRightSplit : (Vector -> ( XY a, XY a, XY a ) -> Bool) -> Vector -> TriMesh (XY a) -> ( TriMesh (XY a), TriMesh (XY a) )
-leftRightSplit test v triangles =
-    let
-        left =
-            triangles
-                |> List.filter (test v)
-
-        right =
-            triangles
-                |> List.filter (test (V.scale -1 v))
-    in
-        ( left, right )
-
-
-{-| only takes upward facing triangles
--}
-splitTriangles : TriMesh (XY a) -> ( Vector, TriMesh (XY a), TriMesh (XY a) )
-splitTriangles inputTriangles =
-    let
-        triangles =
-            inputTriangles
-                |> List.filter (\( p, q, r ) -> edgeVector p q r |> isJust)
-
-        points =
-            triangles |> List.concatMap (map3L identity)
-
-        v =
-            split2D points
-
-        ( left, right ) =
-            leftRightSplit test2DTriangle v triangles
-
-        trouble =
-            max (List.length left) (List.length right) >= List.length triangles
-
-        z =
-            Debug.log "# triangles:" (List.length triangles)
-    in
-        if trouble then
-            let
-                -- want the split that decreases the max # of triangles in a branch
-                score v_ =
-                    triangles
-                        |> leftRightSplit test2DTriangle v_
-                        |> (\( a, b ) -> max (List.length a) (List.length b))
-
-                v2 =
-                    triangles
-                        |> List.map (map3R edgeVector)
-                        |> List.concatMap (\( a, b, c ) -> [ a, b, c ])
-                        |> List.filterMap identity
-                        |> List.sortBy score
-                        |> List.head
-                        |> Maybe.withDefault (Vector 1 0 0)
-
-                ( left2, right2 ) =
-                    leftRightSplit test2DTriangle v2 triangles
-
-                z =
-                    Debug.log "trouble" ( List.length left2, List.length right2, v2, triangles )
-            in
-                ( v2, left2, right2 )
-        else
-            ( v, left, right )
-
-
-split2D : List (XY a) -> Vector
-split2D parts =
-    let
-        points =
-            parts |> List.map (\{ x, y } -> Vector x y 0)
-
-        sum =
-            List.foldl V.add (Vector 0 0 0)
-
-        centroid =
-            sum points
-                |> V.scale (1 / (List.length points |> toFloat))
-
-        cov =
-            points
-                |> List.map (\x -> V.sub x centroid)
-                |> List.map V.toTuple
-                |> List.map (\( x, y, z ) -> Vector (x * x) (x * y) (y * y))
-                |> sum
-
-        ( a, b, c, d ) =
-            ( cov.x, cov.y, cov.y, cov.z )
-
-        trace =
-            a + d
-
-        det =
-            a * d - b * c
-
-        l1 =
-            (trace / 2) + sqrt ((trace ^ 2 / 4) - det)
-
-        v =
-            if b == 0 then
-                if a > d then
-                    Vector 1 0 0
-                else
-                    Vector 0 1 0
-            else
-                Vector (l1 - d) c 0
-                    |> V.normalize
-                    |> Maybe.withDefault V.xAxis
-    in
-        Vector v.x v.y (V.dot v centroid)
-
-
-{-| s is small
--}
-shrinkTriangle : Float -> ( XY a, XY a, XY a ) -> ( XY a, XY a, XY a )
-shrinkTriangle s ( p, q, r ) =
-    let
-        c =
-            { x = (p.x + q.x + r.x) / 3
-            , y = (p.y + q.y + r.y) / 3
-            }
-
-        shrink x =
-            { x | x = x.x + (c.x - x.x) * s, y = x.y + (c.y - x.y) * s }
-    in
-        ( shrink p, shrink q, shrink r )
-
-
-test2D : XY a -> Vector -> Bool
-test2D { x, y } v =
-    V.dot (Vector x y -1) v >= -eps
-
-
-type alias M2 =
-    ( Float, Float, Float, Float )
-
-
-inTriangle : XY a -> ( XY b, XY b, XY b ) -> Bool
-inTriangle pt triangle =
-    let
-        ( e1, e2, e3 ) =
-            map3R edgeVector triangle
-
-        f =
-            test2D pt
-    in
-        case ( e1, e2, e3 ) of
-            ( Just e1_, Just e2_, Just e3_ ) ->
-                f e1_ && f e2_ && f e3_
-
-            _ ->
-                False
-
-
-invert2x2 : M2 -> Maybe M2
-invert2x2 m =
-    let
-        ( a, b, c, d ) =
-            m
-
-        det =
-            a * d - b * c
-    in
-        if det < 1.0e-3 then
-            Nothing
-        else
-            Just ( d / det, -b / det, -c / det, a / det )
 
 
 {-| Reflect vector through normal.
@@ -367,20 +48,13 @@ reflect n x =
             |> V.sub x
 
 
-
---
--- toBarycentric : (Vec3, Vec3, Vec3) -> Vec3 -> Vec3
--- weighted : Float -> Float -> Float
-
-
-scale3D : Vec3 -> RawMesh -> RawMesh
+{-| Needed so long as RawMesh uses Math.Vector3 instead of Vector.
+-}
+scale3D : Vector -> RawMesh -> RawMesh
 scale3D scale mesh =
     let
-        ( x, y, z ) =
-            V3.toTuple scale
-
         f v =
-            vec3 (x * V3.getX v) (y * V3.getY v) (z * V3.getZ v)
+            vec3 (scale.x * V3.getX v) (scale.y * V3.getY v) (scale.z * V3.getZ v)
     in
         mesh |> List.map (map3T f)
 
@@ -390,12 +64,21 @@ eachV f v =
     Vector (f v.x) (f v.y) (f v.z)
 
 
+eachV2 : (Float -> Float -> Float) -> Vector -> Vector -> Vector
+eachV2 f a b =
+    Vector (f a.x b.x) (f a.y b.y) (f a.z b.z)
+
+
+{-| Used in convex hull calculation.
+-}
 type Dir
     = LeftTurn
     | RightTurn
     | Straight
 
 
+{-| 2D convex hull using XY coordinates.
+-}
 makeZHull : RawMesh -> List ( Float, Float )
 makeZHull mesh =
     let
@@ -464,11 +147,6 @@ hull pts =
         top ++ List.reverse bottom |> List.Extra.unique
 
 
-eachV2 : (Float -> Float -> Float) -> Vector -> Vector -> Vector
-eachV2 f a b =
-    Vector (f a.x b.x) (f a.y b.y) (f a.z b.z)
-
-
 makeBounds : RawMesh -> Collision.Bounds
 makeBounds rawMesh =
     let
@@ -476,16 +154,6 @@ makeBounds rawMesh =
             Collision.face (V.fromVec3 a) (V.fromVec3 b) (V.fromVec3 c)
     in
         rawMesh |> List.map toFace |> Collision.create
-
-
-eachMeshPoint : (Vec3 -> Vec3) -> RawMesh -> RawMesh
-eachMeshPoint f mesh =
-    mesh |> List.map (map3T f)
-
-
-addPQ : a -> PQ { mesh : a }
-addPQ mesh =
-    { mesh = mesh, position = vec3 0 0 0, quaternion = vec4 0 0 0 0 }
 
 
 indexMesh : RawMesh -> Mesh
@@ -519,14 +187,6 @@ indexMesh mesh =
         mesh
             |> List.map (map3T getter)
             |> List.map setter
-
-
-
--- populateNeighbors : Mesh -> Mesh
--- populateNeighbors mesh =
---   let
---     meshEmpty = mesh |> List.map (map3T (\v -> {v | neighbors = []}))
---     dict =
 
 
 {-| Surface normal, normalized. Points are in counter-clockwise orientation when facing
@@ -579,15 +239,6 @@ invertIndexedNormals mesh =
     mesh |> List.map (map3T (\a -> { a | normal = V3.scale -1 a.normal }))
 
 
-offset : RawMesh -> Vec3 -> RawMesh
-offset mesh x =
-    let
-        f ( a, b, c ) =
-            ( V3.add a x, V3.add b x, V3.add c x )
-    in
-        mesh |> List.map f
-
-
 centroid : RawMesh -> Vec3
 centroid mesh =
     let
@@ -603,7 +254,7 @@ centroid mesh =
             |> V3.scale (1 / n)
 
 
-{-| Use it with List.concatMap
+{-| Convert each Quad into mesh with 2 triangles. Use it with List.concatMap
 -}
 quadToTri : Quad -> RawMesh
 quadToTri quad =
