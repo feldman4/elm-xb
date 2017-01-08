@@ -195,6 +195,8 @@ type alias Interaction =
     Model -> ( Model, Maybe NamedInteraction, Cmd Action )
 
 
+{-| Defined for consistency. Not actually used.
+-}
 type alias Effect =
     Object -> ( Object, Maybe NamedEffect )
 

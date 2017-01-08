@@ -3,6 +3,8 @@ port module Island.Effects exposing (..)
 import Island.Types exposing (..)
 import Island.Geometry exposing (scale3D, vFrameToFrame, reflect, eachV2)
 import Island.Things exposing (getCached, toBody, boat, island, cube)
+import Island.Ports exposing (requestOceanPort)
+import Utilities exposing (..)
 import VTree exposing (queryTree, test2D, inTriangle)
 import Minimum as M exposing (angleBetween, foldla, toButton)
 import Frame exposing (Frame)
@@ -17,6 +19,10 @@ import Set
 import Dict
 
 
+{-| Folds over all Objects, pattern matching on every NamedEffect and calling
+relevant functions to update Object. Order of NamedEffects within an Object
+matters!
+-}
 effectManager : NamedEffect -> Model -> Time -> Object -> ( Object, Maybe NamedEffect )
 effectManager namedEffect model dt object =
     case namedEffect of
@@ -30,7 +36,9 @@ effectManager namedEffect model dt object =
             )
 
         MainControl speed ->
-            case object.velocity of
+            case
+                object.velocity
+            of
                 Just vFrame ->
                     let
                         newVFrame =
@@ -65,6 +73,9 @@ effectManager namedEffect model dt object =
             ( object, Just (Pause effects) )
 
 
+{-| Pattern matches a single (Action (Msg), NamedInteraction) pair. Returns an
+Interaction function.
+-}
 interactionManager : Action -> NamedInteraction -> Maybe Interaction
 interactionManager action name =
     case ( name, action ) of
@@ -313,13 +324,6 @@ delete model =
                 |> List.filter (\x -> List.member Delete x.effects)
     in
         ( { model | objects = newObjects }, Just Deletion )
-
-
-{-| Zero-indexed.
--}
-allBut : Int -> List a -> List a
-allBut n xs =
-    (++) (List.take n xs) (List.drop (n + 1) xs)
 
 
 {-| Reverse motion, set velocity to zero. No contact position/normal.
@@ -720,7 +724,7 @@ requestOcean model =
         findInOcean oc object =
             object.frame.position
                 |> Frame.transformInto oc.frame
-                |> dotApply (flip (/)) oc.scale
+                |> eachV2 (flip (/)) oc.scale
                 |> V.toTuple
                 |> inRange
 
@@ -812,11 +816,6 @@ updateFloating model coordinates height object =
 
             Nothing ->
                 object
-
-
-{-| (0,1) coordinates in texture, request name
--}
-port requestOceanPort : ( ( Float, Float ), String ) -> Cmd msg
 
 
 {-| Provide a test for objects within angular and distance tolerance.
@@ -1067,6 +1066,15 @@ turn { dx, dy } delta frame =
         |> Frame.intrinsicRotate (Q.yRotation (-delta * dy))
 
 
+noAction : (Model -> ( Model, Maybe NamedInteraction )) -> Interaction
+noAction f x =
+    let
+        ( a, b ) =
+            f x
+    in
+        ( a, b, Cmd.none )
+
+
 {-| Effects change the model and return a List Effect, allowing for persistence.
 -}
 applyEffects : Model -> Time -> Object -> Object
@@ -1086,37 +1094,6 @@ applyEffects model dt object =
             List.foldl applyEffect ( object, [] ) object.effects
     in
         { finalObject | effects = finalEffects }
-
-
-appendMaybe : Maybe a -> List a -> List a
-appendMaybe maybeX xs =
-    case maybeX of
-        Just x ->
-            xs ++ [ x ]
-
-        Nothing ->
-            xs
-
-
-dotApply : (Float -> Float -> Float) -> Vector -> Vector -> Vector
-dotApply f a b =
-    let
-        ( a1, a2, a3 ) =
-            V.toTuple a
-
-        ( b1, b2, b3 ) =
-            V.toTuple b
-    in
-        Vector (f a1 b1) (f a2 b2) (f a3 b3)
-
-
-noAction : (Model -> ( Model, Maybe NamedInteraction )) -> Interaction
-noAction f x =
-    let
-        ( a, b ) =
-            f x
-    in
-        ( a, b, Cmd.none )
 
 
 

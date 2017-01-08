@@ -30,6 +30,23 @@ isJust a =
             False
 
 
+{-| Zero-indexed.
+-}
+allBut : Int -> List a -> List a
+allBut n xs =
+    (++) (List.take n xs) (List.drop (n + 1) xs)
+
+
+appendMaybe : Maybe a -> List a -> List a
+appendMaybe maybeX xs =
+    case maybeX of
+        Just x ->
+            xs ++ [ x ]
+
+        Nothing ->
+            xs
+
+
 type alias M2 =
     ( Float, Float, Float, Float )
 
