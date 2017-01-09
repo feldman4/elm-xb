@@ -149,16 +149,25 @@ subscriptions model =
         |> Sub.batch
 
 
+simpleSubscriptions : Model -> Sub Action
+simpleSubscriptions model =
+    [ Sub.map MinAction (Minimum.subscriptions model) ]
+        |> Sub.batch
+
+
 view : Model -> Html.Html Action
 view model =
     let
         window =
             model.window
 
+        perspectiveMatrix =
+            perspective ( model.window.width, model.window.height ) model.camera
+
         entities =
             (model.objects
                 |> List.filterMap renderMaybe
-                |> List.map (renderObject model)
+                |> List.map (renderObject model perspectiveMatrix)
             )
                 ++ (textureEntity model)
 

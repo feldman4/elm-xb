@@ -105,6 +105,7 @@ buildCache mesh =
     in
         { drawable = mesh |> indexMesh |> meshToTriangle
         , bounds = makeBounds mesh
+        , mesh = mesh
         , zHull =
             makeZHull mesh
         , zTree = VTree.Empty

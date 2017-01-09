@@ -33,14 +33,9 @@ config =
 
 {-| Render an BasicObject with a single light source, choosing shaders based on Material.
 -}
-renderObject : Model -> RenderableObject -> Renderable
-renderObject { window, camera, textures } object =
+renderObject : Model -> Mat4 -> RenderableObject -> Renderable
+renderObject { window, camera, textures } perspectiveMatrix object =
     let
-        -- perspectiveMatrix =
-        --     Minimum.perspective ( window.size.width, window.size.height ) person
-        perspectiveMatrix =
-            perspective ( window.width, window.height ) camera
-
         drawable =
             (getCached object.drawable).drawable
 
@@ -220,6 +215,8 @@ perspective ( w, h ) frame =
             (M4.makeLookAt origin gaze up)
 
 
+{-| Create orthographic projection matrix from camera Frame.
+-}
 orthoPerspective : Frame -> Mat4
 orthoPerspective frame =
     let

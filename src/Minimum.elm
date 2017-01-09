@@ -10,6 +10,11 @@ import Time
 import AnimationFrame
 import Window
 import Drag
+import Json.Decode
+import Json.Decode.Pipeline as JDP
+import Html.Events
+import Html.Attributes
+import Html
 
 
 -- MODEL
@@ -54,6 +59,7 @@ type Action
     | DragMsg Drag.Msg
     | Drag ( Int, Int )
     | ButtonChange ( Bool, String )
+    | OnClick Click
 
 
 eyeLevel : Float
@@ -162,6 +168,9 @@ update action model =
                     Drag.update Drag msg model.dragModel
             in
                 ( { model | dragModel = newDragModel }, dragCmd )
+
+        OnClick click ->
+            model ! []
 
 
 
@@ -316,6 +325,27 @@ subscriptions model =
     , buttonChange ButtonChange
     ]
         |> Sub.batch
+
+
+type alias Click =
+    { offsetX : Int
+    , offsetY : Int
+    , shiftKey : Bool
+    }
+
+
+decodeClick : Json.Decode.Decoder Click
+decodeClick =
+    JDP.decode Click
+        |> JDP.required "offsetX" (Json.Decode.int)
+        |> JDP.required "offsetY" (Json.Decode.int)
+        |> JDP.required "shiftKey" (Json.Decode.bool)
+
+
+onClick : (Click -> msg) -> Html.Attribute msg
+onClick msg =
+    Html.Events.on "click" decodeClick
+        |> Html.Attributes.map msg
 
 
 keyChange : Bool -> Keyboard.KeyCode -> Action

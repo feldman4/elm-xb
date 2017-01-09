@@ -151,6 +151,9 @@ interactionManager action name =
         ( PauseExcept _, _ ) ->
             Nothing
 
+        ( Raycast, _ ) ->
+            Nothing
+
 
 clampVelocity : Float -> Float -> Vector -> Vector
 clampVelocity xyr zr velocity =
@@ -321,7 +324,7 @@ delete model =
     let
         newObjects =
             model.objects
-                |> List.filter (\x -> List.member Delete x.effects)
+                |> List.filter (\x -> not <| List.member Delete x.effects)
     in
         ( { model | objects = newObjects }, Just Deletion )
 

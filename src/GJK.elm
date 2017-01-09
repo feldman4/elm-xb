@@ -8,7 +8,7 @@ import Html exposing (text)
 -- debugging imports
 
 import Island.Things
-import Island.Geometry exposing (map3T)
+import Utilities exposing (map3T)
 import Frame
 
 

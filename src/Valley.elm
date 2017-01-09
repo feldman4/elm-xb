@@ -1,12 +1,23 @@
 module Valley exposing (..)
 
-import List.Extra
-import Html exposing (text, p, div)
-import EveryDict
 import Frame exposing (Frame)
-import Vector as V exposing (Vector)
+import Html exposing (br, div, p, text)
+import Html.Attributes exposing (height, style, width)
+import Island.Effects
+import Island.Geometry exposing (scale3D)
+import Island.Island
+import Island.Render exposing (..)
+import Island.Things exposing (getCached)
+import Island.Types exposing (Model, Object, NamedInteraction)
+import Minimum exposing (onClick)
 import Math.Matrix4 as M4 exposing (Mat4, makeOrtho)
 import Math.Vector3 as V3 exposing (Vec3, vec3)
+import Math.Vector4 as V4 exposing (Vec4, vec4)
+import Quaternion as Q
+import Utilities exposing (..)
+import VTree exposing (inTriangle)
+import Vector as V exposing (Vector)
+import WebGL
 
 
 type alias Face =
@@ -21,28 +32,166 @@ type alias Path =
     List Face
 
 
-demoProjection : Ortho
-demoProjection =
+type Action
+    = IslandAction Island.Types.Action
+
+
+
+-- main : Html.Html msg
+-- main =
+--     let
+--         -- testFindPath |> toString |> text
+--         points =
+--             testProjection
+--                 |> List.map toString
+--                 |> List.map (\x -> p [] [ text x ])
+--                 |> div []
+--     in
+--         points
+
+
+init : ( Model, Cmd Action )
+init =
     let
-        origin =
-            Vector -3 3 -3 |> V.toVec3
+        ( model, act ) =
+            Island.Island.init
 
-        gaze =
-            Vector -1 1 -1 |> V.toVec3
+        objects =
+            []
 
-        up =
-            V.zAxis |> V.toVec3
-
-        ( left, right, bottom, top, znear, zfar ) =
-            ( -1, 1, -1, 1, 0.1, 100 )
-
-        pMat =
-            makeOrtho left right bottom top znear zfar
-
-        camMat =
-            M4.makeLookAt origin gaze up
+        interactions =
+            []
     in
-        M4.mul pMat camMat
+        { model | objects = objects, interactions = interactions }
+            ! [ Cmd.map IslandAction act ]
+
+
+main : Program Never Model Action
+main =
+    Html.program
+        { init = init
+        , view = view
+        , subscriptions = subscriptions
+        , update = (\a m -> updater a m)
+        }
+
+
+updater : Action -> Model -> ( Model, Cmd Action )
+updater a m =
+    let
+        ( m2, a2 ) =
+            update a m
+
+        ( m4, a4 ) =
+            case a of
+                IslandAction (Island.Types.MinAction (Minimum.OnClick click)) ->
+                    -- just take care of raycasting, no Interaction for now
+                    let
+                        ( w, h ) =
+                            ( click.offsetX // m2.window.width |> toFloat
+                            , click.offsetY // m2.window.height |> toFloat
+                            )
+
+                        colorHit obj =
+                            if raycast ( w, h ) m2.camera obj then
+                                { obj | material = Island.Types.Color (vec4 1 0 0 1) }
+                            else
+                                { obj | material = Island.Types.Color (vec4 0 1 0 1) }
+
+                        hitObjects =
+                            m2.objects
+                                |> List.map colorHit
+                    in
+                        ( { m2 | objects = hitObjects }, Cmd.none )
+
+                IslandAction act ->
+                    let
+                        ( m3, a3 ) =
+                            Island.Effects.applyInteractions act m2
+                    in
+                        ( m3, Cmd.map IslandAction a3 )
+    in
+        ( m4, Cmd.batch [ a2, a4 ] )
+
+
+{-| Works so long as there are no custom Effects. Otherwise you need a custom
+applyEffects to pattern match and delegate appropriately. Will cause problems
+because effect handlers expect an Object with {a | effects : List Effect}.
+-}
+update : Action -> Model -> ( Model, Cmd Action )
+update action model =
+    case action of
+        IslandAction act ->
+            let
+                ( newModel, newAct ) =
+                    Island.Island.update act model
+            in
+                newModel ! [ Cmd.map IslandAction newAct ]
+
+
+
+--
+-- OnClick { offsetX, offsetY } ->
+--     model ! []
+
+
+subscriptions : Model -> Sub Action
+subscriptions model =
+    [ Sub.map IslandAction (Island.Island.simpleSubscriptions model)
+    ]
+        |> Sub.batch
+
+
+{-| Represent ray from a to b as a Frame, with the x axis pointing in ray
+direction.
+-}
+rayToFrame : Vector -> Vector -> Frame
+rayToFrame a b =
+    { position = a, orientation = Q.rotationFor V.xAxis (V.sub b a) }
+
+
+{-| Do a collision test with a triangle by transforming the triangle
+into the ray frame and checking if it contains the XY origin.
+-}
+rayThroughTriangle : Frame -> ( Vector, Vector, Vector ) -> Bool
+rayThroughTriangle frame triangle =
+    map3T (Frame.transformInto frame) triangle
+        |> inTriangle (Vector 0 0 0)
+
+
+{-| Needs to be tested.
+-}
+raycast : ( Float, Float ) -> Frame -> Object -> Bool
+raycast ( screenX, screenY ) camera object =
+    let
+        screenNear =
+            vec3 screenX screenY -1 |> inv |> V.fromVec3
+
+        screenFar =
+            vec3 screenX screenY 1 |> inv |> V.fromVec3
+
+        inv =
+            orthoPerspective camera
+                |> M4.inverseOrthonormal
+                |> M4.transform
+
+        rayFrame =
+            rayToFrame screenNear screenFar
+
+        -- get object mesh
+        cast thing =
+            (getCached thing).mesh
+                |> scale3D object.scale
+                |> List.map (map3T V.fromVec3)
+                |> List.map (map3T (Frame.transformOutOf object.frame))
+                |> List.any (rayThroughTriangle rayFrame)
+    in
+        case object.drawable of
+            Nothing ->
+                False
+
+            Just thing ->
+                cast thing
 
 
 {-| Two (simple) Faces are linked if they border each other in an orthographic
@@ -84,6 +233,12 @@ findPath ortho faces a b =
 testProjection : List ( Vec3, Bool )
 testProjection =
     let
+        camera =
+            Frame.identity
+                |> Frame.setPosition (Vector -3 3 -3)
+                |> Frame.intrinsicRotate (Q.rotationFor V.xAxis (Vector -1 1 -1))
+                |> orthoPerspective
+
         positions =
             [ Vector 0 0 0, Vector 0 1 0, Vector 1 1 0, Vector -2 3 -2 ]
                 |> List.map (\v -> Frame.setPosition v Frame.identity)
@@ -91,11 +246,11 @@ testProjection =
         faces =
             positions
                 |> List.map Frame.toMat4
-                |> List.map (M4.mul demoProjection)
+                |> List.map (M4.mul camera)
                 |> List.map (\m -> M4.transform m (Vector 0 0 0 |> V.toVec3))
 
         touchingOrigin x =
-            isLinked demoProjection Frame.identity x
+            isLinked camera Frame.identity x
     in
         positions
             |> List.map touchingOrigin
@@ -114,181 +269,52 @@ testFindPath =
         dijkstra test points 1 7
 
 
-main : Html.Html msg
-main =
+view : Model -> Html.Html Action
+view model =
     let
-        -- testFindPath |> toString |> text
-        points =
-            testProjection
-                |> List.map toString
-                |> List.map (\x -> p [] [ text x ])
-                |> div []
+        window =
+            model.window
+
+        perspectiveMatrix =
+            orthoPerspective model.camera
+
+        entities =
+            (model.objects
+                |> List.filterMap renderMaybe
+                |> List.map (renderObject model perspectiveMatrix)
+            )
+                ++ (textureEntity model)
+
+        message =
+            [ "Enjoy your stay on the island. " ++ (toString model.clock.dt) ]
+
+        messageText =
+            List.map text message
+                |> List.intersperse (br [] [])
     in
-        points
-
-
-type alias DijkstraData a =
-    { queue : List a
-    , distance : EveryDict.EveryDict a Float
-    , parent : EveryDict.EveryDict a (Maybe a)
-    }
-
-
-{-| Pops the closest node out of the queue, returning a sorted queue.
--}
-next : DijkstraData a -> Maybe ( a, DijkstraData a )
-next ({ queue, distance } as data) =
-    let
-        getDistance node =
-            EveryDict.get node distance |> Maybe.withDefault (1 / 0)
-    in
-        case data.queue |> List.sortBy getDistance of
-            x :: xs ->
-                Just ( x, { data | queue = xs } )
-
-            [] ->
-                Nothing
-
-
-{-| recursively traces marked nodes back to start
--}
-unwind : EveryDict.EveryDict a (Maybe a) -> List a -> a -> Maybe (List a)
-unwind parent soFar start =
-    case soFar of
-        x :: xs ->
-            case EveryDict.get x parent of
-                Just (Just p) ->
-                    if p == start then
-                        Just (p :: soFar)
-                    else
-                        unwind parent (p :: soFar) start
-
-                _ ->
-                    Nothing
-
-        [] ->
-            Nothing
-
-
-{-| Would be nice to use elm-community/graph. Not sure if there is a way to use
-the built-in `bfs` traversal with min-priority queue.
--}
-dijkstra : (a -> a -> Bool) -> List a -> a -> a -> Maybe (List a)
-dijkstra test nodes start goal =
-    let
-        initialData : DijkstraData a
-        initialData =
-            { queue = [ start ]
-            , distance =
-                nodes
-                    |> List.map (\k -> ( k, 1 / 0 ))
-                    |> EveryDict.fromList
-                    |> EveryDict.insert start 0
-            , parent = nodes |> List.map (\k -> ( k, Nothing )) |> EveryDict.fromList
-            }
-
-        -- process a node: put neighbors in queue, mark distance and parent
-        process : DijkstraData a -> a -> DijkstraData a
-        process ({ queue, distance, parent } as data) node =
-            let
-                unvisited n =
-                    EveryDict.get n distance
-                        |> Maybe.withDefault (1 / 0)
-                        |> isInfinite
-
-                currentDistance =
-                    EveryDict.get node distance
-                        |> Maybe.withDefault (1 / 0)
-
-                visit n data_ =
-                    let
-                        -- both distance and parent are set if the distance is lowest
-                        d =
-                            EveryDict.get n data_.distance
-                                |> Maybe.withDefault (1 / 0)
-                                |> min (currentDistance + 1)
-
-                        newParent =
-                            if d == currentDistance + 1 then
-                                EveryDict.insert n (Just node) data_.parent
-                            else
-                                parent
-                    in
-                        { data_
-                            | distance = EveryDict.insert n d data_.distance
-                            , parent = newParent
-                            , queue = n :: data_.queue
-                        }
-            in
-                nodes
-                    |> List.filter (test node)
-                    |> List.filter unvisited
-                    |> List.foldl visit data
-
-        -- main loop
-        step : DijkstraData a -> Maybe (List a)
-        step ({ queue, distance, parent } as data) =
-            case next data of
-                Just ( node, data2 ) ->
-                    if node == goal then
-                        let
-                            -- do this update
-                            data3 =
-                                process data2 node
-                        in
-                            unwind data3.parent [ node ] start
-                    else
-                        process data2 node |> step
-
-                Nothing ->
-                    case EveryDict.get goal parent of
-                        Just (Just node) ->
-                            unwind parent [ node ] start
-
-                        _ ->
-                            Nothing
-    in
-        step initialData
-
-
-{-| Brute force breadth-first solution. Use `dijkstra` instead.
--}
-findPathBF : (a -> a -> Bool) -> List a -> a -> a -> Maybe (List a)
-findPathBF test items a b =
-    let
-        neighbors : a -> List a
-        neighbors x =
-            items |> List.filter (test x)
-
-        -- breadth-first search
-        extendPath : a -> List (List a) -> Maybe (List a)
-        extendPath goal soFar =
-            let
-                atGoal xs =
-                    case List.head xs of
-                        Just x ->
-                            if x == goal then
-                                True
-                            else
-                                False
-
-                        Nothing ->
-                            False
-
-                addNeighbors xs =
-                    case xs |> List.head of
-                        Just x ->
-                            neighbors x
-                                |> List.map (\y -> y :: xs)
-
-                        Nothing ->
-                            []
-            in
-                case soFar |> List.Extra.find atGoal of
-                    Just solution ->
-                        Just solution
-
-                    Nothing ->
-                        extendPath goal (soFar |> List.concatMap addNeighbors)
-    in
-        extendPath b [ [ a ] ]
+        div
+            [ style
+                [ ( "width", toString window.width ++ "px" )
+                , ( "height", toString window.height ++ "px" )
+                , ( "position", "relative" )
+                ]
+            ]
+            [ WebGL.toHtml
+                [ width window.width
+                , height window.height
+                , style [ ( "display", "block" ) ]
+                , onClick (\x -> x |> Minimum.OnClick |> Island.Types.MinAction |> IslandAction)
+                ]
+                entities
+            , div
+                [ style
+                    [ ( "position", "absolute" )
+                    , ( "font-family", "monospace" )
+                    , ( "text-align", "center" )
+                    , ( "left", "20px" )
+                    , ( "right", "20px" )
+                    , ( "top", "20px" )
+                    ]
+                ]
+                messageText
+            ]

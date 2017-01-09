@@ -20,6 +20,7 @@ type NamedInteraction
     | ResolveCollisions
     | Deletion
     | PauseExcept EffectGroup
+    | Raycast
 
 
 type NamedEffect
@@ -137,6 +138,7 @@ type Material
 type alias Cached =
     { drawable : WebGL.Drawable Attribute
     , bounds : Collision.Bounds
+    , mesh : RawMesh
     , zHull :
         List ( Float, Float )
     , zTree : VTree ( XYZ, XYZ, XYZ )
