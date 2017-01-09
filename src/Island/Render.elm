@@ -218,3 +218,27 @@ perspective ( w, h ) frame =
     in
         M4.mul (M4.makePerspective 90 (toFloat w / toFloat h) 0.01 100)
             (M4.makeLookAt origin gaze up)
+
+
+orthoPerspective : Frame -> Mat4
+orthoPerspective frame =
+    let
+        origin =
+            frame.position |> V.toVec3
+
+        gaze =
+            Frame.transformOutOf frame (Vector 1 0 0) |> V.toVec3
+
+        up =
+            (Vector 0 0 1) |> V.toVec3
+
+        ( left, right, bottom, top, znear, zfar ) =
+            ( -1, 1, -1, 1, 0.1, 100 )
+
+        pMat =
+            M4.makeOrtho left right bottom top znear zfar
+
+        camMat =
+            M4.makeLookAt origin gaze up
+    in
+        M4.mul pMat camMat

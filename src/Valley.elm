@@ -1,42 +1,130 @@
 module Valley exposing (..)
 
 import List.Extra
-import Html exposing (text)
+import Html exposing (text, p, div)
 import EveryDict
+import Frame exposing (Frame)
+import Vector as V exposing (Vector)
+import Math.Matrix4 as M4 exposing (Mat4, makeOrtho)
+import Math.Vector3 as V3 exposing (Vec3, vec3)
 
 
 type alias Face =
-    { x : Int, y : Int, z : Int }
+    Frame
 
 
 type alias Ortho =
-    Int
+    Mat4
 
 
 type alias Path =
     List Face
 
 
-main : Html.Html msg
-main =
-    testFindPath |> toString |> text
+demoProjection : Ortho
+demoProjection =
+    let
+        origin =
+            Vector -3 3 -3 |> V.toVec3
+
+        gaze =
+            Vector -1 1 -1 |> V.toVec3
+
+        up =
+            V.zAxis |> V.toVec3
+
+        ( left, right, bottom, top, znear, zfar ) =
+            ( -1, 1, -1, 1, 0.1, 100 )
+
+        pMat =
+            makeOrtho left right bottom top znear zfar
+
+        camMat =
+            M4.makeLookAt origin gaze up
+    in
+        M4.mul pMat camMat
+
+
+{-| Two (simple) Faces are linked if they border each other in an orthographic
+projection and point in the same direction. If the projection is not
+parallel to rays from the origin bisecting the cube edges then only in-plane
+neighbors will be linked.
+-}
+isLinked : Ortho -> Face -> Face -> Bool
+isLinked ortho a b =
+    let
+        offsets =
+            [ Vector 1 0 0, Vector -1 0 0, Vector 0 1 0, Vector 0 -1 0 ]
+
+        -- positions of neighboring faces in transform
+        neighbors x =
+            offsets
+                |> List.map (\v -> Frame.intrinsicNudge v x)
+                |> List.map transform
+
+        transform x =
+            Frame.toMat4 x
+                |> (M4.mul ortho)
+                |> (\m -> M4.transform m (Vector 0 0 0 |> V.toVec3))
+
+        xyEqual u v =
+            V3.getX u == V3.getX v && V3.getY u == V3.getY v
+
+        touching =
+            a |> neighbors |> List.any (xyEqual (transform b))
+    in
+        touching
 
 
 findPath : Ortho -> List Face -> Face -> Face -> Maybe Path
 findPath ortho faces a b =
-    findPathBF (isLinked ortho) faces a b
+    dijkstra (isLinked ortho) faces a b
+
+
+testProjection : List ( Vec3, Bool )
+testProjection =
+    let
+        positions =
+            [ Vector 0 0 0, Vector 0 1 0, Vector 1 1 0, Vector -2 3 -2 ]
+                |> List.map (\v -> Frame.setPosition v Frame.identity)
+
+        faces =
+            positions
+                |> List.map Frame.toMat4
+                |> List.map (M4.mul demoProjection)
+                |> List.map (\m -> M4.transform m (Vector 0 0 0 |> V.toVec3))
+
+        touchingOrigin x =
+            isLinked demoProjection Frame.identity x
+    in
+        positions
+            |> List.map touchingOrigin
+            |> List.map2 (,) faces
 
 
 testFindPath : Maybe (List Int)
 testFindPath =
     let
         test a b =
-            abs (a - b) < 2
+            abs (a - b) < 3
 
         points =
             List.range 0 10
     in
         dijkstra test points 1 7
+
+
+main : Html.Html msg
+main =
+    let
+        -- testFindPath |> toString |> text
+        points =
+            testProjection
+                |> List.map toString
+                |> List.map (\x -> p [] [ text x ])
+                |> div []
+    in
+        points
 
 
 type alias DijkstraData a =
@@ -140,7 +228,7 @@ dijkstra test nodes start goal =
         -- main loop
         step : DijkstraData a -> Maybe (List a)
         step ({ queue, distance, parent } as data) =
-            case next (Debug.log "data" data) of
+            case next data of
                 Just ( node, data2 ) ->
                     if node == goal then
                         let
@@ -204,11 +292,3 @@ findPathBF test items a b =
                         extendPath goal (soFar |> List.concatMap addNeighbors)
     in
         extendPath b [ [ a ] ]
-
-
-isLinked : Ortho -> Face -> Face -> Bool
-isLinked ortho a b =
-    if a == b then
-        False
-    else
-        True
