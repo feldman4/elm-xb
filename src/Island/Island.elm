@@ -7,6 +7,7 @@ import Minimum
 import Island.Types exposing (..)
 import Island.Render exposing (..)
 import Island.Things exposing (..)
+import Island.Ports exposing (waterIndicator)
 import Island.Effects exposing (applyEffects, applyInteractions, updateFloating)
 import Frame
 import EveryDict
@@ -85,7 +86,6 @@ init =
         , dragModel = model.dragModel
         , textures = EveryDict.empty
         , camera = Frame.identity
-        , dt = 0
         }
             ! ([ action ] ++ textureActions)
 
@@ -106,7 +106,6 @@ update action model =
                                 | objects =
                                     model.objects
                                         |> List.map (applyEffects model dt)
-                                , dt = dt
                             }
 
                         _ ->
@@ -142,9 +141,6 @@ update action model =
                     ! []
 
 
-port waterIndicator : (( String, ( Float, Float, Float, Float ) ) -> msg) -> Sub msg
-
-
 subscriptions : Model -> Sub Action
 subscriptions model =
     [ Sub.map MinAction (Minimum.subscriptions model)
@@ -167,7 +163,7 @@ view model =
                 ++ (textureEntity model)
 
         message =
-            [ "Enjoy your stay on the island. " ++ (toString model.dt) ]
+            [ "Enjoy your stay on the island. " ++ (toString model.clock.dt) ]
 
         messageText =
             List.map text message

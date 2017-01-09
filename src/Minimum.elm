@@ -21,7 +21,7 @@ type alias Model a =
         , gamepad : Gamepad
         , window : Window.Size
         , person : Person
-        , clock : Time.Time
+        , clock : Clock
         , dragModel : Drag.Model
     }
 
@@ -31,6 +31,10 @@ type alias Person =
     , velocity : Vec3
     , gaze : Vec3
     }
+
+
+type alias Clock =
+    { dt : Time.Time, time : Time.Time }
 
 
 type alias Keys =
@@ -87,7 +91,7 @@ init =
       , gamepad = defaultGamepad
       , window = Window.Size 0 0
       , dragModel = Drag.initialModel
-      , clock = 0
+      , clock = Clock 0 0
       }
     , Cmd.batch
         [ Task.perform Resize Window.size
@@ -140,7 +144,7 @@ update action model =
                         |> turn (gamepadLook model.gamepad)
                         |> gravity (dt / 500)
                         |> physics (dt / 500)
-                , clock = model.clock + dt
+                , clock = { dt = dt, time = model.clock.time + dt }
             }
                 ! []
 

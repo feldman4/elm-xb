@@ -210,7 +210,6 @@ type alias Modeled =
     , textures : EveryDict.EveryDict NamedTexture Texture
     , interactions : List NamedInteraction
     , camera : Frame
-    , dt : Float
     }
 
 
