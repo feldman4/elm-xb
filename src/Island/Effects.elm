@@ -36,25 +36,12 @@ effectManager namedEffect model dt object =
             )
 
         MainControl speed ->
-            case
-                object.velocity
-            of
+            case object.velocity of
                 Just vFrame ->
-                    let
-                        newVFrame =
-                            control model (dt * speed * 0.001) object.frame vFrame
-                    in
-                        -- speed is in units per second, dt in milliseconds
-                        -- shouldn't have to set frame (turning)
-                        ( { object | velocity = Just newVFrame }
-                        , Just (MainControl speed)
-                        )
+                    ( control model (dt * speed * 0.001) vFrame object, Just (MainControl speed) )
 
                 Nothing ->
                     ( object, Just (MainControl speed) )
-
-        View ->
-            ( object, Just View )
 
         Floating floatingInfo ->
             floatBoat floatingInfo object
@@ -62,6 +49,9 @@ effectManager namedEffect model dt object =
         Gravity g ->
             -- dt in milliseconds
             ( gravity (g * 0.001) dt object, Just (Gravity g) )
+
+        View ->
+            ( object, Just View )
 
         Collide x ->
             ( object, Just (Collide x) )
@@ -959,12 +949,21 @@ model.interactions
     |> foldla model
 -}
 applyInteractions : Action -> Model -> ( Model, Cmd Action )
-applyInteractions action model =
+applyInteractions =
+    interactionFold interactionManager
+
+
+interactionFold :
+    (a -> b -> Maybe ({ c | interactions : List b } -> ( { c | interactions : List b }, Maybe b, Cmd msg )))
+    -> a
+    -> { c | interactions : List b }
+    -> ( { c | interactions : List b }, Cmd msg )
+interactionFold intManager action model =
     let
         applyInteraction int ( m, intSoFar, actionsSoFar ) =
             let
                 ( newM, newInt, newAct ) =
-                    case interactionManager action int of
+                    case intManager action int of
                         Just f ->
                             f m
 
@@ -979,22 +978,30 @@ applyInteractions action model =
         ( { finalModel | interactions = finalInts }, Cmd.batch finalActions )
 
 
-control : Model -> Float -> Frame -> VFrame -> VFrame
-control model delta frame vFrame =
+
+-- foldInteractions : (a->i->Maybe (m -> (m, Maybe i, a))) -> a -> m -> List i -> (m, List i, List a)
+-- foldInteractions manager action model intList =
+--   let
+--     apply int (m, intSoFar, actSoFar) =
+--     ( , [], [] )
+
+
+control : Model -> Float -> VFrame -> Object -> Object
+control model delta vFrame object =
     let
         -- change in velocity
         dV =
-            move (M.directions model.keys model.gamepad) delta frame
+            move (M.directions model.keys model.gamepad) delta object.frame
 
         -- |> Debug.log "m"
         -- directly modify frame :(
         -- not sure how to express turning as a change in velocity.orientation
         newFrame =
-            turn (M.gamepadLook model.gamepad) (delta * 50) frame
+            turn (M.gamepadLook model.gamepad) (delta * 50) object.frame
 
         -- reverse frame orientation before calculating difference
         dW2 =
-            Frame.inverse frame
+            Frame.inverse object.frame
                 |> Frame.mul newFrame
                 |> .orientation
                 |> Q.toVector
@@ -1031,7 +1038,7 @@ control model delta frame vFrame =
         decay =
             0.5 ^ (delta / 0.06)
     in
-        newVFrame
+        { object | velocity = Just newVFrame }
 
 
 {-| Uses typical XY directions to return change in velocity frame. Ignore z.

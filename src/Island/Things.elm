@@ -13,6 +13,7 @@ import Vector as V exposing (Vector)
 import Quaternion as Q
 import Task
 import Collision
+import Lazy exposing (Lazy)
 
 
 lightSource : Vec3
@@ -112,64 +113,77 @@ buildCache mesh =
         }
 
 
-islandCache : Cached
+islandCache : Lazy Cached
 islandCache =
     let
         zTree =
-            initIslandDrawable |> meshToXY |> (buildTree2 splitTriangles)
+            Lazy.lazy (\_ -> initIslandDrawable |> meshToXY |> (buildTree2 splitTriangles))
+
+        f z =
+            buildCache initIslandDrawable
+                |> (\x -> { x | zTree = z })
     in
-        buildCache initIslandDrawable
-            |> (\x -> { x | zTree = zTree })
+        Lazy.map f zTree
 
 
-boatCache : Cached
+boatCache : Lazy Cached
 boatCache =
     let
         bounds =
-            cube |> List.map (map3T (V3.scale 0.3)) |> makeBounds
+            Lazy.lazy (\_ -> cube |> List.map (map3T (V3.scale 0.3)) |> makeBounds)
+
+        f b =
+            buildCache boat
+                |> (\x -> { x | bounds = b })
     in
-        buildCache boat
-            |> (\x -> { x | bounds = bounds })
+        Lazy.map f bounds
 
 
-lightCubeCache : Cached
+lightCubeCache : Lazy Cached
 lightCubeCache =
-    buildCache cube
+    Lazy.lazy (\_ -> buildCache cube)
 
 
-oceanCache : Cached
+oceanCache : Lazy Cached
 oceanCache =
-    buildCache []
-        |> (\x -> { x | drawable = initOceanDrawable })
+    Lazy.lazy
+        (\_ ->
+            buildCache []
+                |> (\x -> { x | drawable = initOceanDrawable })
+        )
 
 
-faceCache : Cached
+faceCache : Lazy Cached
 faceCache =
-    buildCache face
+    Lazy.lazy (\_ -> buildCache face)
 
 
 {-|
 -}
 getCached : Thing -> Cached
 getCached thing =
-    case thing of
-        Island ->
-            islandCache
+    let
+        cache =
+            case thing of
+                Island ->
+                    islandCache
 
-        Boat ->
-            boatCache
+                Boat ->
+                    boatCache
 
-        LightCube ->
-            lightCubeCache
+                LightCube ->
+                    lightCubeCache
 
-        Ocean ->
-            oceanCache
+                Ocean ->
+                    oceanCache
 
-        Face ->
-            faceCache
+                Face ->
+                    faceCache
 
-        _ ->
-            lightCubeCache
+                _ ->
+                    lightCubeCache
+    in
+        cache |> Lazy.force
 
 
 toBody : Object -> Collision.Body {}

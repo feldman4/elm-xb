@@ -217,8 +217,8 @@ perspective ( w, h ) frame =
 
 {-| Create orthographic projection matrix from camera Frame.
 -}
-orthoPerspective : Frame -> Mat4
-orthoPerspective frame =
+orthoPerspective : Float -> Float -> Frame -> Mat4
+orthoPerspective width height frame =
     let
         origin =
             frame.position |> V.toVec3
@@ -230,7 +230,7 @@ orthoPerspective frame =
             (Vector 0 0 1) |> V.toVec3
 
         ( left, right, bottom, top, znear, zfar ) =
-            ( -1, 1, -1, 1, 0.1, 100 )
+            ( -width, width, -height, height, 0.1, 100 )
 
         pMat =
             M4.makeOrtho left right bottom top znear zfar

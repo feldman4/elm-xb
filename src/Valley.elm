@@ -4,15 +4,15 @@ import Frame exposing (Frame)
 import Html exposing (br, div, p, text)
 import Html.Attributes exposing (height, style, width)
 import Island.Effects
-import Island.Geometry exposing (scale3D)
+import Island.Geometry exposing (frameToVFrame, scale3D)
 import Island.Island
 import Island.Render exposing (..)
-import Island.Things exposing (getCached)
-import Island.Types exposing (Model, Object, NamedInteraction)
-import Minimum exposing (onClick)
+import Island.Things exposing (getCached, initBoat, initLightCube)
+import Island.Types exposing (Model, NamedInteraction, Object)
 import Math.Matrix4 as M4 exposing (Mat4, makeOrtho)
 import Math.Vector3 as V3 exposing (Vec3, vec3)
 import Math.Vector4 as V4 exposing (Vec4, vec4)
+import Minimum exposing (onClick)
 import Quaternion as Q
 import Utilities exposing (..)
 import VTree exposing (inTriangle)
@@ -53,14 +53,43 @@ type Action
 init : ( Model, Cmd Action )
 init =
     let
+        cube =
+            initLightCube
+
+        avatar =
+            { cube
+                | effects =
+                    [ Island.Types.View
+                    , Island.Types.MainControl 2
+                    , Island.Types.Motion
+                    ]
+                , velocity = Just (Frame.identity |> frameToVFrame)
+                , drawable = Nothing
+                , frame =
+                    Frame.identity
+                        |> Frame.setPosition (Vector -2 0 2)
+                        |> Frame.intrinsicRotate (Q.rotationFor V.xAxis (Vector 1 0 -1))
+            }
+
+        cubes =
+            List.range 0 5
+                |> List.map toFloat
+                |> List.map
+                    (\x ->
+                        { cube
+                            | frame = Frame.setPosition (Vector x x x) cube.frame
+                            , scale = Vector 0.5 0.5 0.5
+                        }
+                    )
+
         ( model, act ) =
             Island.Island.init
 
         objects =
-            []
+            [ avatar ] ++ cubes
 
         interactions =
-            []
+            [ Island.Types.Follow Island.Types.FPS ]
     in
         { model | objects = objects, interactions = interactions }
             ! [ Cmd.map IslandAction act ]
@@ -87,20 +116,41 @@ updater a m =
                 IslandAction (Island.Types.MinAction (Minimum.OnClick click)) ->
                     -- just take care of raycasting, no Interaction for now
                     let
-                        ( w, h ) =
-                            ( click.offsetX // m2.window.width |> toFloat
-                            , click.offsetY // m2.window.height |> toFloat
-                            )
+                        w =
+                            ((click.offsetX |> toFloat) / (m2.window.width |> toFloat) * 2 - 1)
+                                |> (*) 10
 
-                        colorHit obj =
+                        h =
+                            (1 - 2 * (click.offsetY |> toFloat) / (m2.window.height |> toFloat))
+                                |> (*) 10
+
+                        greenObjects =
+                            m2.objects |> List.map (\x -> { x | material = Island.Types.Color (vec4 0 1 0 1) })
+
+                        colorHit obj objects =
                             if raycast ( w, h ) m2.camera obj then
-                                { obj | material = Island.Types.Color (vec4 1 0 0 1) }
+                                let
+                                    projMat =
+                                        orthoPerspective 10 10 m2.camera
+
+                                    -- actually want links between faces, not cubes
+                                    testLink a =
+                                        cubeToFaces a.frame
+                                            |> List.any (\x -> cubeToFaces obj.frame |> List.any (isLinked projMat x))
+
+                                    colorIf a =
+                                        if testLink a || obj == a then
+                                            { a | material = Island.Types.Color (vec4 1 0 0 1) }
+                                        else
+                                            a
+                                in
+                                    objects
+                                        |> List.map colorIf
                             else
-                                { obj | material = Island.Types.Color (vec4 0 1 0 1) }
+                                objects
 
                         hitObjects =
-                            m2.objects
-                                |> List.map colorHit
+                            greenObjects |> List.foldl colorHit greenObjects
                     in
                         ( { m2 | objects = hitObjects }, Cmd.none )
 
@@ -142,12 +192,12 @@ subscriptions model =
         |> Sub.batch
 
 
-{-| Represent ray from a to b as a Frame, with the x axis pointing in ray
+{-| Represent ray from a to b as a Frame, with the z axis pointing in ray
 direction.
 -}
 rayToFrame : Vector -> Vector -> Frame
 rayToFrame a b =
-    { position = a, orientation = Q.rotationFor V.xAxis (V.sub b a) }
+    { position = a, orientation = Q.rotationFor V.zAxis (V.sub b a) }
 
 
 {-| Do a collision test with a triangle by transforming the triangle
@@ -156,42 +206,73 @@ into the ray frame and checking if it contains the XY origin.
 rayThroughTriangle : Frame -> ( Vector, Vector, Vector ) -> Bool
 rayThroughTriangle frame triangle =
     map3T (Frame.transformInto frame) triangle
+        |> map3T (\v -> Vector v.x v.y v.z)
         |> inTriangle (Vector 0 0 0)
 
 
-{-| Needs to be tested.
+{-| Seems to work.
 -}
 raycast : ( Float, Float ) -> Frame -> Object -> Bool
 raycast ( screenX, screenY ) camera object =
-    let
-        screenNear =
-            vec3 screenX screenY -1 |> inv |> V.fromVec3
+    case object.drawable of
+        Nothing ->
+            False
 
-        screenFar =
-            vec3 screenX screenY 1 |> inv |> V.fromVec3
+        Just thing ->
+            let
+                screenNear =
+                    vec3 screenX screenY -1 |> V3.scale 10 |> M4.transform inv |> V.fromVec3
 
-        inv =
-            orthoPerspective camera
-                |> M4.inverseOrthonormal
-                |> M4.transform
+                screenFar =
+                    vec3 screenX screenY 1 |> V3.scale 10 |> M4.transform inv |> V.fromVec3
 
-        rayFrame =
-            rayToFrame screenNear screenFar
+                -- sort-of right inverse. M * M^-1 has nonzero entries in bottom row.
+                -- orthographic projection doesn't seem very orthonormal, but this still works
+                inv =
+                    orthoPerspective 10 10 camera
+                        |> M4.inverseOrthonormal
 
-        -- get object mesh
-        cast thing =
-            (getCached thing).mesh
-                |> scale3D object.scale
-                |> List.map (map3T V.fromVec3)
-                |> List.map (map3T (Frame.transformOutOf object.frame))
-                |> List.any (rayThroughTriangle rayFrame)
-    in
-        case object.drawable of
-            Nothing ->
-                False
+                z =
+                    orthoPerspective 10 10 camera
+                        |> (flip M4.mul) inv
 
-            Just thing ->
+                -- inverse doesn't include translation
+                rayFrame =
+                    rayToFrame screenNear screenFar
+                        |> Frame.extrinsicNudge camera.position
+
+                -- get object mesh
+                cast thing =
+                    (getCached thing).mesh
+                        |> scale3D object.scale
+                        |> List.map (map3T V.fromVec3)
+                        |> List.map (map3T (Frame.transformOutOf object.frame))
+                        |> List.any (rayThroughTriangle rayFrame)
+            in
                 cast thing
+
+
+{-| Get 6 faces of cube, represented as frames. In the Face frame, the actual face
+is a 1x1 rectangle centered on the origin in the XY plane.
+-}
+cubeToFaces : Frame -> List Face
+cubeToFaces frame =
+    let
+        orientations =
+            [ V.xAxis, V.yAxis, V.zAxis, (V.scale -1 V.yAxis), (V.scale -1 V.zAxis) ]
+                |> List.map (Q.rotationFor V.xAxis)
+                |> (::) (Q.yRotation pi)
+
+        initialFace =
+            Frame.identity
+                |> Frame.extrinsicNudge (Vector 0 0 0.5)
+
+        faces =
+            orientations
+                |> List.map (\q -> Frame.extrinsicRotate q initialFace)
+                |> List.map (Frame.compose frame)
+    in
+        faces
 
 
 {-| Two (simple) Faces are linked if they border each other in an orthographic
@@ -211,13 +292,24 @@ isLinked ortho a b =
                 |> List.map (\v -> Frame.intrinsicNudge v x)
                 |> List.map transform
 
+        -- screen space Face center (origin)
         transform x =
             Frame.toMat4 x
                 |> (M4.mul ortho)
                 |> (\m -> M4.transform m (Vector 0 0 0 |> V.toVec3))
 
+        threshold =
+            0.03
+
         xyEqual u v =
-            V3.getX u == V3.getX v && V3.getY u == V3.getY v
+            let
+                xDiff =
+                    (abs (V3.getX u - V3.getX v))
+
+                yDiff =
+                    (abs (V3.getY u - V3.getY v))
+            in
+                xDiff <= threshold && yDiff <= threshold
 
         touching =
             a |> neighbors |> List.any (xyEqual (transform b))
@@ -237,7 +329,7 @@ testProjection =
             Frame.identity
                 |> Frame.setPosition (Vector -3 3 -3)
                 |> Frame.intrinsicRotate (Q.rotationFor V.xAxis (Vector -1 1 -1))
-                |> orthoPerspective
+                |> (\f -> orthoPerspective 10 10 f)
 
         positions =
             [ Vector 0 0 0, Vector 0 1 0, Vector 1 1 0, Vector -2 3 -2 ]
@@ -276,7 +368,7 @@ view model =
             model.window
 
         perspectiveMatrix =
-            orthoPerspective model.camera
+            orthoPerspective 10 10 model.camera
 
         entities =
             (model.objects

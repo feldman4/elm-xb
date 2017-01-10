@@ -4,6 +4,9 @@
         "src/*.elm: sh updates.sh",
         "src/*/*.elm: sh updates.sh",
         "src/*.elm : elm make src/Island/Island.elm --output=build/Island.js",
-        "src/*/*.elm : elm make src/Island/Island.elm --output=build/Island.js"
+        "src/*/*.elm : elm make src/Island/Island.elm --output=build/Island.js",
+        "src/*.elm : elm make src/Valley.elm --output=build/Valley.js",
+        "src/*/*.elm : elm make src/Valley.elm --output=build/Valley.js"
+
     ]
-}
+} 
