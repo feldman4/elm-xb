@@ -1,0 +1,205 @@
+<html>
+
+        <head>
+                <meta charset="UTF-8">
+                <title>Title</title>
+                <style type="text/css">
+                    html, body {
+                        height: 100%;
+                        margin: 0;
+                    }
+
+                    #wrapper {
+                        min-height: 100%;
+                    }
+                </style>
+                <script  src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+        </head>
+
+        <body>
+                <div style="width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #9A9A9A; font-family: &#39;Source Sans Pro&#39;;">
+                        <div style="font-size: 3em;">Building your project!</div>
+                        <img src="https://raw.githubusercontent.com/elm-lang/elm-reactor/master/assets/waiting.gif">
+                        <div style="font-size: 1em">With new projects, I need a bunch of extra time to download packages.</div>
+                </div>
+        </body>
+ 
+        <script type="text/javascript" src="build/Valley.js"></script>
+
+
+        <!-- Removes splash and starts elm app. -->
+        <script type="text/javascript">
+            while (document.body.firstChild) {
+                    document.body.removeChild(document.body.firstChild);
+            }
+            var app = Elm.Valley.fullscreen()
+            window.app = app;
+
+            var oldGamepad = null;
+            var oldA = false;
+            var oldB = false;
+            var oldX = false;
+            var oldY = false;
+
+            window.setInterval(pollGamepad, 30);
+
+            function pollGamepad() {
+                var newGamepad = navigator.getGamepads()[0]
+
+                if (!(newGamepad === null)) {
+                    newGamepad = {
+                        axes: newGamepad.axes,
+                        buttons: newGamepad.buttons
+                    }
+                }
+                if (!(JSON.stringify(newGamepad) == JSON.stringify(oldGamepad))) {
+                    app.ports.gamepad.send(newGamepad);
+                    if (!(newGamepad === null) && !(oldGamepad === null)) {
+                        // convenient to be able to subscribe to button press
+                        var newA = newGamepad.buttons[0].pressed;
+                        var newB = newGamepad.buttons[1].pressed;
+                        var newX = newGamepad.buttons[2].pressed;
+                        var newY = newGamepad.buttons[3].pressed;
+                        if (newA != oldA) {
+                            app.ports.buttonChange.send([newA, "A"]);
+                        }
+                        if (newB != oldB) {
+                            app.ports.buttonChange.send([newB, "B"]);
+                        }
+                        if (newX != oldX) {
+                            app.ports.buttonChange.send([newX, "X"]);
+                        }
+                        if (newY != oldY) {
+                            app.ports.buttonChange.send([newY, "Y"]);
+                        }
+                    }
+
+                }
+                oldGamepad = newGamepad;
+                if (!(newGamepad === null)) {
+                  oldA = newGamepad.buttons[0].pressed;
+                  oldB = newGamepad.buttons[1].pressed;
+                  oldX = newGamepad.buttons[2].pressed;
+                  oldY = newGamepad.buttons[3].pressed;
+              }
+            }
+
+        </script>
+</html>
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
