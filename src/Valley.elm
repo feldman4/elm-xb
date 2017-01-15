@@ -82,11 +82,14 @@ init =
                         }
                     )
 
+        tree =
+            { cube | drawable = Just Island.Types.TreeLowPoly, frame = Frame.identity }
+
         ( model, act ) =
             Island.Island.init
 
         objects =
-            [ avatar ] ++ cubes
+            [ avatar, tree ] ++ cubes
 
         interactions =
             [ Island.Types.Follow Island.Types.FPS ]

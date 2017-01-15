@@ -86,11 +86,12 @@ type Thing
     | SeaSphere
     | Ocean
     | Island
+    | TreeLowPoly
 
 
 allThings : List Thing
 allThings =
-    [ LightCube, Boat, Face, SeaSphere, Ocean, Island ]
+    [ LightCube, Boat, Face, SeaSphere, Ocean, Island, TreeLowPoly ]
 
 
 type NamedTexture

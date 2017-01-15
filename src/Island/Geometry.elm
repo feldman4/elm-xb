@@ -156,6 +156,11 @@ makeBounds rawMesh =
         rawMesh |> List.map toFace |> Collision.create
 
 
+deindexMesh : Mesh -> RawMesh
+deindexMesh mesh =
+    mesh |> List.map (map3T .position)
+
+
 indexMesh : RawMesh -> Mesh
 indexMesh mesh =
     let

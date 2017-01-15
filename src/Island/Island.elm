@@ -7,6 +7,7 @@ import Minimum
 import Island.Types exposing (..)
 import Island.Render exposing (..)
 import Island.Things exposing (..)
+import Island.Resources exposing (initScene)
 import Island.Ports exposing (waterIndicator)
 import Island.Effects exposing (applyEffects, applyInteractions, updateFloating)
 import Frame
@@ -62,10 +63,8 @@ init =
             ]
 
         objects =
-            [ initOcean, initAvatar, face0, face1, initLightCube, initIsland ]
+            [ initOcean, initAvatar, face0, face1, initLightCube ] ++ initScene
 
-        -- [
-        -- initBoat, initIsland,
         textureActions =
             [ Crate, Thwomp, NormalMap, DisplacementMap ]
                 |> List.map textureAction
@@ -121,7 +120,11 @@ update action model =
             model ! []
 
         TextureLoaded ( name, texture ) ->
-            { model | textures = EveryDict.insert name texture model.textures } ! []
+            let
+                z =
+                    Debug.log "loaded" texture
+            in
+                { model | textures = EveryDict.insert name texture model.textures } ! []
 
         WaterIndicator ( coordinates, heights ) ->
             let

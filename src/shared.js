@@ -21,7 +21,7 @@
 // SOFTWARE.
 
 var INITIAL_SIZE = 250,
-    INITIAL_WIND = [0.0, 20.0],
+    INITIAL_WIND = [0.0, 5.0],
     INITIAL_CHOPPINESS = 1.5;
 
 var CLEAR_COLOR = [1.0, 1.0, 1.0, 0.0],
