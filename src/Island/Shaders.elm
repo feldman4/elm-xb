@@ -2,6 +2,7 @@ module Island.Shaders exposing (..)
 
 import WebGL exposing (render, Renderable, Shader, Texture)
 import Island.Types exposing (..)
+import Math.Vector3 exposing (Vec3)
 
 
 colorVertexShader : Shader Attribute (UniformColor (Uniforms u)) Varyings
@@ -144,6 +145,69 @@ void main () {
 |]
 
 
+clipmapVertexShader : Shader { a | position : Vec3, normal : Vec3 } ClipmapUniforms Varyings
+clipmapVertexShader =
+    [glsl|
+
+precision mediump float;
+attribute vec3 position;
+attribute vec3 normal;
+
+uniform mat4 perspective;
+uniform mat4 transform;
+uniform mat4 normalMatrix;
+uniform vec3 light;
+uniform vec3 viewer;
+uniform vec4 color;
+
+uniform sampler2D heightmap;
+uniform mat4 transformInverse;
+
+
+
+varying vec3 phongL;
+varying vec3 phongN;
+varying vec3 phongV;
+varying vec3 phongI;
+varying vec3 sources[2];
+
+void main() {
+  // GET TEXTURE COORDINATE BY TRANSFORMING CAMERA POSITION INTO 0..1,
+  // SCALE VERTEX, THEN APPLY TRANSLATION FROM CAMERA, THEN MOD
+
+  vec4 cameraCenter = transformInverse * vec4(viewer, 1.0);
+  float spacing = position.z / (5.0 * 4.0);
+  // EXTRA FACTOR OF 2 SO GRID STEPS EVENLY
+  vec3 modPosition = position + floor(cameraCenter.xyz / (spacing * 2.0)) * (spacing * 2.0);
+  vec3 floorPosition = modPosition - vec3(0.5, 0.5, 0.0); // CENTER
+
+  // SAMPLE HEIGHT FROM TEXTURE R
+  floorPosition.z = texture2D(heightmap, floorPosition.xy).r;
+  if (floorPosition.xy != mod(floorPosition.xy, 1.0)) {
+    floorPosition.z = 0.0;
+  }
+
+
+  // TRANSFORM OUT OF 0..1 USING STANDARD METHOD
+
+  vec4 worldPosition = transform * vec4(floorPosition, 1.0);
+  vec4 worldNormal = normalMatrix * vec4(normal, 1.0);
+
+  gl_Position = perspective * worldPosition;
+
+  phongL = normalize(light - worldPosition.xyz);
+  phongN = normalize(worldNormal.xyz);
+  phongV = normalize(viewer - worldPosition.xyz);
+  phongI = vec3(position.z, position.z, position.z);
+  // phongI = color.rgb;
+  sources[0] = light;
+  sources[1] = worldPosition.xyz;
+
+
+}
+|]
+
+
 
 -- FRAGMENT
 
@@ -237,10 +301,7 @@ void main () {
 |]
 
 
-
--- textureFragmentShader : Shader {} (Uniforms { texture : Texture }) { vcoord : Vec3 }
-
-
+textureFragmentShader : Shader {} { u | texture : Texture } { vcoord : Vec3 }
 textureFragmentShader =
     [glsl|
 

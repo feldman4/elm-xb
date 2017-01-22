@@ -23,6 +23,11 @@ map3R f ( p, q, r ) =
     ( f p q r, f q r p, f r p q )
 
 
+map4T : (a -> b) -> ( a, a, a, a ) -> ( b, b, b, b )
+map4T h ( a, b, c, d ) =
+    ( h a, h b, h c, h d )
+
+
 isJust : Maybe a -> Bool
 isJust a =
     case a of

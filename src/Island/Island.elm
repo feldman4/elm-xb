@@ -63,10 +63,11 @@ init =
             ]
 
         objects =
-            [ initOcean, initAvatar, face0, face1, initLightCube ] ++ initScene
+            [ initOcean, initAvatar, face0, face1, initLightCube ]
 
+        -- ++ initScene
         textureActions =
-            [ Crate, Thwomp, NormalMap, DisplacementMap ]
+            [ Crate, Thwomp, NormalMap, DisplacementMap, HeightTexMap ]
                 |> List.map textureAction
 
         ( model, msg ) =

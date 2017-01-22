@@ -87,11 +87,20 @@ type Thing
     | Ocean
     | Island
     | TreeLowPoly
+    | Clipmap
 
 
 allThings : List Thing
 allThings =
-    [ LightCube, Boat, Face, SeaSphere, Ocean, Island, TreeLowPoly ]
+    [ LightCube
+    , Boat
+    , Face
+    , SeaSphere
+    , Ocean
+    , Island
+    , TreeLowPoly
+    , Clipmap
+    ]
 
 
 type NamedTexture
@@ -99,6 +108,7 @@ type NamedTexture
     | Thwomp
     | DisplacementMap
     | NormalMap
+    | HeightTexMap
 
 
 type alias RawMesh =
@@ -134,6 +144,7 @@ type Material
     = Color Vec4
     | MaterialTexture NamedTexture
     | OceanTexture ( NamedTexture, NamedTexture )
+    | ClipmapTexture NamedTexture
 
 
 type alias Cached =
@@ -244,9 +255,7 @@ type alias Varyings =
     , phongL : Vec3
     , phongN : Vec3
     , phongV : Vec3
-    , sources :
-        Vec3
-        -- , fDistance : Float
+    , sources : Vec3
     }
 
 
@@ -266,3 +275,7 @@ type alias UniformColor u =
 
 type alias TextureUniforms u =
     { u | tex0 : Texture, tex1 : Texture }
+
+
+type alias ClipmapUniforms =
+    Uniforms (UniformColor { heightmap : Texture, transformInverse : Mat4 })

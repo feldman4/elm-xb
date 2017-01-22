@@ -1,6 +1,7 @@
 module Island.Render exposing (..)
 
 import Math.Matrix4 as M4 exposing (Mat4)
+import Math.Vector3 as V3 exposing (vec3, Vec3)
 import Math.Vector4 as V4 exposing (vec4, Vec4)
 import WebGL exposing (..)
 import Island.Types exposing (..)
@@ -95,6 +96,36 @@ renderObject { window, camera, textures } perspectiveMatrix object =
 
                     Nothing ->
                         -- object is missing texture
+                        defaultRender
+
+            ClipmapTexture name ->
+                case EveryDict.get name textures of
+                    Just heightmap ->
+                        let
+                            inverseScale =
+                                V3.vec3 (1 / object.scale.x) (1 / object.scale.y) (1 / object.scale.z)
+
+                            transformInverse =
+                                object.frame
+                                    |> Frame.inverse
+                                    |> Frame.toMat4
+                                    |> M4.mul (M4.makeScale inverseScale)
+
+                            uniforms =
+                                { perspective = perspectiveMatrix
+                                , transform = transform
+                                , normalMatrix = normalMatrix
+                                , light = lightSource
+                                , viewer = camera.position |> V.toVec3
+                                , heightmap = heightmap
+                                , transformInverse = transformInverse
+                                , color = vec4 0.3 0.5 0.7 1.0
+                                }
+                        in
+                            render clipmapVertexShader colorFragmentShader drawable uniforms
+
+                    -- defaultRender
+                    Nothing ->
                         defaultRender
 
             OceanTexture ( name0, name1 ) ->

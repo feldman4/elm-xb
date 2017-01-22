@@ -125,6 +125,8 @@ edgeVector p r q =
         Maybe.map2 (\w b -> Vector w.x w.y b) w bias
 
 
+{-| x,y coordinates define plane normal. z coordinate is offset.
+-}
 test2DTriangle : Vector -> ( XY a, XY a, XY a ) -> Bool
 test2DTriangle v tri =
     let
@@ -132,7 +134,7 @@ test2DTriangle v tri =
             (V.dot (Vector x.x x.y -1) v) >= eps
     in
         -- tri |> shrinkTriangle 0.01 |> map3L test |> List.any identity
-        tri |> map3L test |> List.any identity
+        tri |> map3L identity |> List.any test
 
 
 leftRightSplit : (Vector -> ( XY a, XY a, XY a ) -> Bool) -> Vector -> TriMesh (XY a) -> ( TriMesh (XY a), TriMesh (XY a) )
@@ -156,8 +158,8 @@ splitTriangles inputTriangles =
     let
         triangles =
             inputTriangles
-                |> List.filter (\( p, q, r ) -> edgeVector p q r |> isJust)
 
+        -- |> List.filter (\( p, q, r ) -> edgeVector p q r |> isJust)
         points =
             triangles |> List.concatMap (map3L identity)
 
@@ -191,7 +193,7 @@ splitTriangles inputTriangles =
                     leftRightSplit test2DTriangle v2 triangles
 
                 -- z =
-                --     Debug.log "trouble" ( List.length left2, List.length right2, v2, triangles )
+                --     Debug.log "trouble" ( List.length left, List.length right, List.length left2, List.length right2 )
             in
                 ( v2, left2, right2 )
         else

@@ -48,6 +48,9 @@ textureURL name =
         NormalMap ->
             "http://i144.photobucket.com/albums/r196/salombo_photos/AB%20Seasons%20Game%20Icons/ABS_GGGLIcon.jpg"
 
+        HeightTexMap ->
+            "http://i.imgur.com/tMXyJecm.jpg"
+
 
 textureAction : NamedTexture -> Cmd Action
 textureAction name =
@@ -167,6 +170,24 @@ faceCache =
     Lazy.lazy (\_ -> buildCache face)
 
 
+clipmapCache : Lazy Cached
+clipmapCache =
+    let
+        spacing =
+            6
+
+        numRings =
+            3
+    in
+        Lazy.lazy
+            (\_ ->
+                clipmap spacing numRings
+                    |> scaleClipmap
+                    |> buildCache
+                    |> (\x -> { x | drawable = x.mesh |> indexMesh |> invertIndexedNormals |> meshToLine })
+            )
+
+
 {-|
 -}
 getCached : Thing -> Cached
@@ -194,6 +215,9 @@ getCached thing =
 
                 TreeLowPoly ->
                     treeCache
+
+                Clipmap ->
+                    clipmapCache
     in
         cache |> Lazy.force
 
@@ -231,8 +255,8 @@ initAvatar =
         , velocity = Just (Frame.identity |> frameToVFrame)
         , scale = Vector 0.3 0.3 0.3
         , material = Color (vec4 0.7 0.7 0.9 1.0)
-        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 0 0 2)
-        , effects = [ MainControl 2, View, Collide OBBN, Gravity 1, Motion, Floating defaultFloating ]
+        , frame = Frame.identity |> Frame.extrinsicNudge (Vector 12 0 2)
+        , effects = [ MainControl 2, View, Collide OBBN, Motion, Floating defaultFloating ]
     }
 
 
@@ -283,7 +307,7 @@ initOcean =
         , frame =
             Frame.identity
                 |> Frame.extrinsicNudge (Vector -15 -15 0)
-        , scale = Vector 30 30 1
+        , scale = Vector 30 30 5
     }
 
 
@@ -341,9 +365,7 @@ initLightCubeDrawable =
         cube
             |> List.map (map3T (V3.add x))
             |> indexMesh
-            -- |> invertIndexedNormals
-            |>
-                meshToTriangle
+            |> meshToTriangle
 
 
 initBoatDrawable : BoundedDrawable Attribute

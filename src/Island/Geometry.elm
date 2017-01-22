@@ -308,6 +308,21 @@ meshToTriangle mesh =
         mesh |> List.map (map3T toAttribute) |> WebGL.Triangle
 
 
+meshToLine : Mesh -> WebGL.Drawable Attribute
+meshToLine mesh =
+    let
+        toAttribute vertex =
+            { position = vertex.position
+            , coords = vertex.position
+            , normal = vertex.normal
+            }
+
+        makeLine ( a, b, c ) =
+            [ ( a, b ), ( b, c ), ( c, a ) ]
+    in
+        mesh |> List.map (map3T toAttribute) |> List.concatMap makeLine |> WebGL.Lines
+
+
 edgedMeshToTriangle : Mesh -> WebGL.Drawable EdgedVertex
 edgedMeshToTriangle mesh =
     let
@@ -355,3 +370,147 @@ edgedMeshToTriangle mesh =
         mesh
             |> List.map (map3T toAttribute)
             |> WebGL.Triangle
+
+
+clipmap : Int -> Int -> List (List ( Vector, Vector, Vector, Vector ))
+clipmap spacing numRings =
+    let
+        grid m n =
+            List.range 1 m |> List.concatMap (\x -> List.range 1 n |> List.map (\y -> ( x, y )))
+
+        k =
+            spacing * 4
+
+        offset x_ y_ ( x, y ) =
+            ( x + x_, y + y_ )
+
+        scale s ( x, y ) =
+            ( x * s, y * s )
+
+        left =
+            grid 2 (k // 2 + 2) |> List.map (offset -2 -2) |> List.map (scale 2)
+
+        right =
+            grid 2 (k // 2 + 2) |> List.map (offset ((k // 2) - 2) -2) |> List.map (scale 2)
+
+        bottom =
+            grid (k // 2 - 2) 2 |> List.map (offset 0 -2) |> List.map (scale 2)
+
+        top =
+            grid (k // 2 - 2) 2 |> List.map (offset 0 ((k // 2) - 2)) |> List.map (scale 2)
+
+        pointToSquare w ( x_, y_ ) =
+            let
+                x =
+                    toFloat x_
+
+                y =
+                    toFloat y_
+            in
+                ( Vector x y 0
+                , Vector x (y + w) 0
+                , Vector (x + w) (y + w) 0
+                , Vector (x + w) y 0
+                )
+
+        edges =
+            [ left, top, right, bottom ] |> List.concat |> List.map (pointToSquare 2)
+
+        center =
+            grid (k - 4) (k - 4) |> List.map (offset 1 1) |> List.map (pointToSquare 1)
+
+        ring0 =
+            center
+                ++ edges
+                |> List.map (map4T (V.scale (1 / (k |> toFloat))))
+                |> List.map (map4T (setZ (2 ^ (0 - numRings |> toFloat))))
+
+        eps =
+            1 / (10 * k |> toFloat)
+
+        removeHole ( v, _, _, _ ) =
+            (v.x < 0.25 - eps || v.x > 0.75 - eps)
+                || (v.y < 0.25 - eps || v.y > 0.75 - eps)
+
+        ring =
+            ring0 |> List.filter removeHole
+
+        outerRing =
+            center
+                |> List.map (map4T (V.scale (1 / (k |> toFloat))))
+                |> List.filter removeHole
+                |> List.map (map4T (setZ 1.0))
+
+        setZ z v =
+            { v | z = z }
+
+        rings =
+            List.range 1 (numRings - 1)
+                |> List.map (\z -> 2 ^ (z - numRings |> toFloat))
+                |> List.map (\z -> List.map (map4T (setZ z)) ring)
+    in
+        if numRings == 0 then
+            [ ring0 ]
+        else
+            [ ring0 ]
+                ++ rings
+                ++ [ outerRing ]
+
+
+scaleClipmap : List (List ( Vector, Vector, Vector, Vector )) -> RawMesh
+scaleClipmap rings =
+    let
+        factor =
+            List.length rings |> toFloat |> (\x -> 2 ^ (1 - x))
+
+        scale i xs =
+            let
+                s =
+                    (2 ^ (toFloat i)) * factor * 1.2
+
+                f v =
+                    v
+                        |> V.add (Vector -0.5 -0.5 0)
+                        |> (\v -> Vector (v.x * s) (v.y * s) v.z)
+                        |> V.add (Vector 0.5 0.5 0)
+            in
+                xs |> List.map (map4T f)
+
+        onEdge v_ =
+            let
+                v =
+                    V.fromVec3 v_
+
+                count =
+                    5.0 * 4.0
+
+                spacing =
+                    v.z / count
+
+                isEven n =
+                    (rem n 2) == 0
+
+                ptOdd x =
+                    (x / spacing) |> round |> isEven |> not
+
+                ptEdge x =
+                    abs ((0.5 - v.z / 2) - x) < 1.0e-3 || abs ((0.5 + v.z / 2) - x) < 1.0e-3
+            in
+                if ptOdd v.x && ptEdge v.y then
+                    if v.y < 0.5 then
+                        { v | x = v.x + v.z / count } |> V.toVec3
+                    else
+                        { v | x = v.x - v.z / count } |> V.toVec3
+                else if ptOdd v.y && ptEdge v.x then
+                    if v.x < 0.5 then
+                        { v | y = v.y + v.z / count } |> V.toVec3
+                    else
+                        { v | y = v.y - v.z / count } |> V.toVec3
+                else
+                    v |> V.toVec3
+    in
+        rings
+            |> List.indexedMap scale
+            |> List.concat
+            |> List.concatMap ((map4T V.toVec3) >> quadToTri)
+            |> List.map (map3T onEdge)
